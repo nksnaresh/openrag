@@ -22,3 +22,16 @@ __all__ = [
     "OpenRAG",
     "OpenRAGConfig",
 ]
+
+# ── Built-in adapter auto-registration ────────────────────────────────────────
+# Register the bundled in-process adapters so that the default config values
+# ("in_memory", "networkx", "sqlite") resolve without any user configuration.
+
+from openrag.registry import AdapterRegistry  # noqa: E402
+from openrag.storage.document.sqlite import SQLiteDocumentAdapter  # noqa: E402
+from openrag.storage.graph.networkx import NetworkXAdapter  # noqa: E402
+from openrag.storage.vector.in_memory import InMemoryVectorAdapter  # noqa: E402
+
+AdapterRegistry.register_vector_db("in_memory", InMemoryVectorAdapter)
+AdapterRegistry.register_graph_db("networkx", NetworkXAdapter)
+AdapterRegistry.register_doc_store("sqlite", SQLiteDocumentAdapter)
