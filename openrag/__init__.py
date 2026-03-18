@@ -35,3 +35,21 @@ from openrag.storage.vector.in_memory import InMemoryVectorAdapter  # noqa: E402
 AdapterRegistry.register_vector_db("in_memory", InMemoryVectorAdapter)
 AdapterRegistry.register_graph_db("networkx", NetworkXAdapter)
 AdapterRegistry.register_doc_store("sqlite", SQLiteDocumentAdapter)
+
+# ── Parser auto-registration (Phase 2) ───────────────────────────────────────
+from openrag.parsers.code import PlainCodeAdapter  # noqa: E402
+from openrag.parsers.html import HTMLAdapter  # noqa: E402
+from openrag.parsers.pdf import PyMuPDFAdapter  # noqa: E402
+
+AdapterRegistry.register_parser(".pdf",  PyMuPDFAdapter)
+AdapterRegistry.register_parser(".html", HTMLAdapter)
+AdapterRegistry.register_parser(".htm",  HTMLAdapter)
+for _ext in [".py", ".js", ".ts", ".go", ".java", ".rs", ".cpp", ".c"]:
+    AdapterRegistry.register_parser(_ext, PlainCodeAdapter)
+
+# Docling optional — only register if library is installed
+from openrag.parsers.docling import DoclingAdapter  # noqa: E402
+
+if DoclingAdapter.health_check():
+    for _ext in [".docx", ".pptx", ".doc"]:
+        AdapterRegistry.register_parser(_ext, DoclingAdapter)

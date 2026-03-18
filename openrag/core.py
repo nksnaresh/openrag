@@ -198,17 +198,16 @@ class OpenRAG:
                 "or use it as an async context manager."
             )
 
-    def _get_orchestrator(self) -> Any:  # noqa: ANN401  # returns IngestionOrchestrator (Phase 1)
+    def _get_orchestrator(self) -> Any:  # noqa: ANN401  # returns IngestionOrchestrator
         if self._orchestrator is None:
             from openrag.ingestion.orchestrator import IngestionOrchestrator
+            from openrag.pipeline.dag_engine import build_default_pipeline
+            dag_engine = build_default_pipeline(self.config, processors={})
             self._orchestrator = IngestionOrchestrator(
                 config=self.config,
-                vector_db=self._vector_db,
-                graph_db=self._graph_db,
+                registry=AdapterRegistry(),
+                dag_engine=dag_engine,
                 doc_store=self._doc_store,
-                llm_func=self.llm_func,
-                vlm_func=self.vlm_func,
-                embedding_func=self.embedding_func,
             )
         return self._orchestrator
 
