@@ -53,3 +53,17 @@ from openrag.parsers.docling import DoclingAdapter  # noqa: E402
 if DoclingAdapter.health_check():
     for _ext in [".docx", ".pptx", ".doc"]:
         AdapterRegistry.register_parser(_ext, DoclingAdapter)
+# ── Embedding auto-registration (Phase 3) ────────────────────────────────────
+from openrag.embeddings.huggingface import (  # noqa: E402
+    HuggingFaceEmbeddingAdapter,
+)
+from openrag.embeddings.ollama import OllamaEmbeddingAdapter  # noqa: E402
+from openrag.embeddings.openai import OpenAIEmbeddingAdapter  # noqa: E402
+
+AdapterRegistry.register_embedding("openai", OpenAIEmbeddingAdapter)
+AdapterRegistry.register_embedding("ollama", OllamaEmbeddingAdapter)
+try:
+    import sentence_transformers  # noqa: F401
+    AdapterRegistry.register_embedding("huggingface", HuggingFaceEmbeddingAdapter)
+except ImportError:
+    pass

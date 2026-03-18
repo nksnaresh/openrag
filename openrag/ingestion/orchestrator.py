@@ -11,7 +11,9 @@ from pathlib import Path
 import anyio
 
 from openrag.config import OpenRAGConfig
+from openrag.embeddings.engine import EmbeddingEngine
 from openrag.ingestion.deduplicator import compute_file_hash, is_duplicate
+from openrag.knowledge.graph_builder import KnowledgeGraphBuilder
 from openrag.models.content import ContentPayload
 from openrag.models.jobs import (
     BatchJobResult,
@@ -24,6 +26,7 @@ from openrag.models.processing import ContextWindowConfig, ProcessingContext
 from openrag.parsers.base import ParseOptions
 from openrag.pipeline.dag_engine import DAGPipelineEngine
 from openrag.registry import AdapterRegistry, RegistryError
+from openrag.search.bm25_indexer import BM25Indexer
 from openrag.storage.base import BaseDocumentAdapter
 
 
@@ -43,11 +46,17 @@ class IngestionOrchestrator:
         registry: AdapterRegistry,
         dag_engine: DAGPipelineEngine,
         doc_store: BaseDocumentAdapter,
+        embedding_engine: EmbeddingEngine | None = None,
+        kg_builder: KnowledgeGraphBuilder | None = None,
+        bm25_indexer: BM25Indexer | None = None,
     ) -> None:
         self._config = config
         self._registry = registry
         self._dag_engine = dag_engine
         self._doc_store = doc_store
+        self._embedding_engine = embedding_engine
+        self._kg_builder = kg_builder
+        self._bm25_indexer = bm25_indexer
 
     async def ingest_file(
         self,
@@ -146,15 +155,30 @@ class IngestionOrchestrator:
                 reason=f"Pipeline error: {exc}",
             )
 
-        # 6. Persist document record
+        # 6. Persist results (Parallel Indexing)
         try:
-            await self._doc_store.save_document(payload, metadata.namespace)
+            async with anyio.create_task_group() as tg:
+                # A. Document record (primary)
+                tg.start_soon(self._doc_store.save_document, payload, metadata.namespace)
+                
+                # B. Embedding indexing
+                if self._embedding_engine:
+                    tg.start_soon(self._embedding_engine.embed_blocks, processed_blocks)
+                
+                # C. Knowledge Graph indexing
+                if self._kg_builder:
+                    tg.start_soon(self._kg_builder.build_from_blocks, processed_blocks, payload, context)
+                
+                # D. BM25 indexing
+                if self._bm25_indexer:
+                    tg.start_soon(self._bm25_indexer.index_blocks, processed_blocks, metadata.namespace)
+
         except Exception as exc:  # noqa: BLE001
             return JobResult(
                 job_id=content_hash,
                 status=JobStatus.FAILED,
                 document_id=content_hash,
-                reason=f"Storage error: {exc}",
+                reason=f"Indexing error: {exc}",
             )
 
         return JobResult(

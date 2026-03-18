@@ -200,14 +200,33 @@ class OpenRAG:
 
     def _get_orchestrator(self) -> Any:  # noqa: ANN401  # returns IngestionOrchestrator
         if self._orchestrator is None:
+            from openrag.embeddings.cache import InMemoryEmbeddingCache
+            from openrag.embeddings.engine import EmbeddingEngine
             from openrag.ingestion.orchestrator import IngestionOrchestrator
+            from openrag.knowledge.graph_builder import KnowledgeGraphBuilder
             from openrag.pipeline.dag_engine import build_default_pipeline
+            from openrag.search.bm25_indexer import BM25Indexer
+
             dag_engine = build_default_pipeline(self.config, processors={})
+            registry = AdapterRegistry()
+
+            # Initialize Phase 3 indexing engines
+            emb_cls = registry.get_embedding(self.config.embedding.provider)
+            embedding_engine = EmbeddingEngine(
+                adapter=emb_cls(self.config.embedding),
+                cache=InMemoryEmbeddingCache(),
+            )
+            kg_builder = KnowledgeGraphBuilder(graph_db=self._graph_db)
+            bm25_indexer = BM25Indexer(doc_store=self._doc_store)
+
             self._orchestrator = IngestionOrchestrator(
                 config=self.config,
-                registry=AdapterRegistry(),
+                registry=registry,
                 dag_engine=dag_engine,
                 doc_store=self._doc_store,
+                embedding_engine=embedding_engine,
+                kg_builder=kg_builder,
+                bm25_indexer=bm25_indexer,
             )
         return self._orchestrator
 
