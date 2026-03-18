@@ -230,16 +230,51 @@ class OpenRAG:
             )
         return self._orchestrator
 
-    def _get_query_engine(self) -> Any:  # noqa: ANN401  # returns QueryOrchestrator (Phase 1)
+    def _get_query_engine(self) -> Any:  # noqa: ANN401  # returns QueryOrchestrator
         if self._query_engine is None:
+            from openrag.embeddings.cache import InMemoryEmbeddingCache
+            from openrag.embeddings.engine import EmbeddingEngine
             from openrag.query.orchestrator import QueryOrchestrator
-            self._query_engine = QueryOrchestrator(
-                config=self.config,
+            from openrag.query.query_processor import QueryProcessor
+            from openrag.search.hybrid_search import HybridSearcher
+            from openrag.search.reranker import CohereReranker, HuggingFaceReranker
+
+            registry = AdapterRegistry()
+            
+            # 1. Embedding Engine (shared with orchestrator)
+            emb_cls = registry.get_embedding(self.config.embedding.provider)
+            embedding_engine = EmbeddingEngine(
+                adapter=emb_cls(self.config.embedding),
+                cache=InMemoryEmbeddingCache(),
+            )
+
+            # 2. Hybrid Searcher
+            hybrid_searcher = HybridSearcher(
                 vector_db=self._vector_db,
                 graph_db=self._graph_db,
                 doc_store=self._doc_store,
+                embedding_engine=embedding_engine,
+            )
+
+            # 3. Reranker (optional)
+            reranker = None
+            if self.config.rerank.enabled:
+                if self.config.rerank.adapter == "cohere":
+                    reranker = CohereReranker(model=self.config.rerank.model)
+                else:
+                    reranker = HuggingFaceReranker(model_name=self.config.rerank.model)
+
+            # 4. Query Processor
+            query_processor = None
+            if self.llm_func:
+                query_processor = QueryProcessor(llm_func=self.llm_func)
+
+            self._query_engine = QueryOrchestrator(
+                config=self.config,
+                hybrid_searcher=hybrid_searcher,
+                reranker=reranker,
+                query_processor=query_processor,
                 llm_func=self.llm_func,
-                vlm_func=self.vlm_func,
             )
         return self._query_engine
 
