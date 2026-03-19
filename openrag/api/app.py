@@ -16,6 +16,9 @@ from openrag.core import OpenRAG
 from openrag.config import OpenRAGConfig
 from openrag.api.routes import router
 from openrag.registry import AdapterRegistry
+from openrag.observability.tracing import setup_tracing
+from openrag.observability.metrics import MetricsManager
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 # Import Gemini adapter to register it
 import openrag.embeddings.gemini
@@ -25,6 +28,9 @@ rag_instance: OpenRAG | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 0. Setup Tracing
+    setup_tracing("openrag-api")
+    
     # 1. Configuration Check
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -65,6 +71,21 @@ async def lifespan(app: FastAPI):
             return "[Error: GEMINI_API_KEY not set]"
         model = genai.GenerativeModel(config.llm.model)
         response = await model.generate_content_async(prompt)
+        
+        # Record Metrics
+        if hasattr(response, "usage_metadata"):
+            usage = response.usage_metadata
+            MetricsManager.TOKEN_USAGE.labels(
+                tenant=config.tenant_id,
+                model=config.llm.model,
+                type="prompt"
+            ).inc(usage.prompt_token_count)
+            MetricsManager.TOKEN_USAGE.labels(
+                tenant=config.tenant_id,
+                model=config.llm.model,
+                type="completion"
+            ).inc(usage.candidates_token_count)
+            
         return response.text
 
     # ── Quick Gemini Vision function for image/table processors ───────────────
@@ -100,6 +121,9 @@ async def lifespan(app: FastAPI):
         print("INFO: OpenRAG shut down")
 
 app = FastAPI(title="OpenRAG API", lifespan=lifespan)
+
+# Enable automatic tracing for FastAPI
+FastAPIInstrumentor.instrument_app(app)
 
 app.include_router(router, prefix="/api/v1")
 

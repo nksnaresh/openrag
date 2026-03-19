@@ -29,6 +29,11 @@ from openrag.pipeline.dag_engine import DAGPipelineEngine
 from openrag.registry import AdapterRegistry, RegistryError
 from openrag.search.bm25_indexer import BM25Indexer
 from openrag.storage.base import BaseDocumentAdapter, BaseVectorDBAdapter
+from openrag.observability.tracing import get_tracer
+from openrag.observability.metrics import MetricsManager
+import time
+
+tracer = get_tracer(__name__)
 
 
 class IngestionOrchestrator:
@@ -67,7 +72,11 @@ class IngestionOrchestrator:
         metadata: IngestMetadata,
         acl: dict[str, list[str]] | None = None,
     ) -> JobResult:
+        start_time = time.time()
         path = Path(path)
+        with tracer.start_as_current_span("ingest.file") as span:
+            span.set_attribute("openrag.file_path", str(path))
+            span.set_attribute("openrag.namespace", metadata.namespace)
 
         # 1. Hash + dedup
         try:
@@ -195,6 +204,22 @@ class IngestionOrchestrator:
                 document_id=content_hash,
                 reason=f"Indexing error: {exc}\n{traceback.format_exc()}",
             )
+
+        duration = time.time() - start_time
+        MetricsManager.INGEST_DURATION.labels(
+            tenant=metadata.tenant_id,
+            status="completed"
+        ).observe(duration)
+        
+        MetricsManager.INGEST_DOCS.labels(
+            tenant=metadata.tenant_id,
+            status="completed"
+        ).inc()
+        
+        MetricsManager.INGEST_BLOCKS.labels(
+            tenant=metadata.tenant_id,
+            type="total"
+        ).inc(len(processed_blocks))
 
         return JobResult(
             job_id=content_hash,

@@ -10,6 +10,11 @@ import anyio
 from typing import TYPE_CHECKING, Any
 
 from openrag.models.query import QueryResponse, Citation
+from openrag.observability.tracing import get_tracer
+from openrag.observability.metrics import MetricsManager
+import time
+
+tracer = get_tracer(__name__)
 
 if TYPE_CHECKING:
     from openrag.config import OpenRAGConfig
@@ -47,6 +52,16 @@ class QueryOrchestrator:
 
     async def execute(self, request: QueryRequest) -> QueryResponse:
         """Execute a full RAG query flow."""
+        start_time = time.time()
+        with tracer.start_as_current_span("query.execute") as span:
+            span.set_attribute("openrag.namespace", request.namespace)
+            span.set_attribute("openrag.query_mode", request.mode)
+            
+            MetricsManager.QUERY_REQUESTS.labels(
+                tenant=self._config.tenant_id,
+                mode=request.mode,
+                status="started"
+            ).inc()
         
         # 1. Query Processing (Expansion/HyDE)
         search_queries = [request.text]
@@ -90,11 +105,23 @@ class QueryOrchestrator:
         prompt = self._build_synthesis_prompt(request.text, context_text)
         answer = await self._llm_func(prompt)
 
+        latency = (time.time() - start_time)
+        MetricsManager.QUERY_DURATION.labels(
+            tenant=self._config.tenant_id,
+            mode=request.mode
+        ).observe(latency)
+        
+        MetricsManager.QUERY_REQUESTS.labels(
+            tenant=self._config.tenant_id,
+            mode=request.mode,
+            status="completed"
+        ).inc()
+
         return QueryResponse(
             answer=answer,
             citations=self._build_citations(final_hits),
             query_mode=request.mode,
-            latency_ms=0.0
+            latency_ms=latency * 1000
         )
 
     async def _collect_hits(

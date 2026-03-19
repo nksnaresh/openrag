@@ -40,6 +40,13 @@ st.markdown("""
         color: #4CAF50;
         margin-bottom: 5px;
     }
+    .metric-card {
+        background-color: #1e2130;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,70 +89,148 @@ with st.sidebar:
     - OpenRAG uses Hybrid Search (Vector + Graph + BM25).
     """)
 
+# --- Helpers ---
+def get_metrics():
+    try:
+        res = requests.get(f"{st.session_state.api_url}/metrics")
+        if res.status_code == 200:
+            lines = res.text.split("\n")
+            metrics = {}
+            for line in lines:
+                if line.startswith("#") or not line:
+                    continue
+                parts = line.split(" ")
+                if len(parts) >= 2:
+                    metrics[parts[0]] = float(parts[1])
+            return metrics
+    except:
+        return {}
+    return {}
+
 # --- Main UI ---
 st.title("🤖 OpenRAG Explorer")
-st.markdown("Query your private knowledge base with multimodal RAG.")
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if "citations" in message and message["citations"]:
-            with st.expander("References"):
-                for cit in message["citations"]:
-                    st.markdown(f"""
-                    <div class="citation-box">
-                        <div class="source-tag">📄 {cit['source_path']} (Score: {cit['score']:.4f})</div>
-                        <div>{cit['content']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+tab_chat, tab_obs = st.tabs(["💬 Pro Query", "📊 Observability"])
 
-# Chat Input
-if prompt := st.chat_input("Ask a question about your documents..."):
-    # Add user message to chat
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+with tab_chat:
+    st.markdown("Query your private knowledge base with multimodal RAG.")
 
-    # Call API for response
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        citations = []
-        
-        try:
-            # We use the blocking /query endpoint for simplicity in this version
-            # Stream response support can be added later
-            res = requests.post(
-                f"{st.session_state.api_url}/query", 
-                json={"text": prompt, "namespace": "default"}
-            )
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if "citations" in message and message["citations"]:
+                with st.expander("References"):
+                    for cit in message["citations"]:
+                        st.markdown(f"""
+                        <div class="citation-box">
+                            <div class="source-tag">📄 {cit['source_path']} (Score: {cit['score']:.4f})</div>
+                            <div>{cit['content']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+    # Chat Input
+    if prompt := st.chat_input("Ask a question about your documents..."):
+        # Add user message to chat
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Call API for response
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            citations = []
             
-            if res.status_code == 200:
-                data = res.json()
-                full_response = data["answer"]
-                citations = data["citations"]
+            try:
+                res = requests.post(
+                    f"{st.session_state.api_url}/query", 
+                    json={"text": prompt, "namespace": "default"}
+                )
                 
-                message_placeholder.markdown(full_response)
-                
-                if citations:
-                    with st.expander("References"):
-                        for cit in citations:
-                            st.markdown(f"""
-                            <div class="citation-box">
-                                <div class="source-tag">📄 {cit['source_path']} (Score: {cit['score']:.4f})</div>
-                                <div>{cit['content']}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                
-                # Add assistant message to chat state
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": full_response,
-                    "citations": citations
-                })
+                if res.status_code == 200:
+                    data = res.json()
+                    full_response = data["answer"]
+                    citations = data["citations"]
+                    
+                    message_placeholder.markdown(full_response)
+                    
+                    if citations:
+                        with st.expander("References"):
+                            for cit in citations:
+                                st.markdown(f"""
+                                <div class="citation-box">
+                                    <div class="source-tag">📄 {cit['source_path']} (Score: {cit['score']:.4f})</div>
+                                    <div>{cit['content']}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    
+                    st.session_state.messages.append({
+                        "role": "assistant", 
+                        "content": full_response,
+                        "citations": citations
+                    })
+                else:
+                    st.error(f"API Error: {res.status_code} - {res.text}")
+            except Exception as e:
+                st.error(f"Error connecting to API: {e}")
+
+with tab_obs:
+    st.header("📊 System Performance & Observability")
+    metrics = get_metrics()
+    
+    if not metrics:
+        st.warning("No metrics available. Make sure the API server is running and has processed some data.")
+    else:
+        # High Level Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Ingestion Docs (Metric suffix depends on tags, we'll look for substrings)
+        ingest_total = sum(v for k, v in metrics.items() if "openrag_ingest_documents_total" in k)
+        query_total = sum(v for k, v in metrics.items() if "openrag_query_requests_total" in k and 'status="completed"' in k)
+        
+        col1.metric("Documents Ingested", int(ingest_total))
+        col2.metric("Total Queries", int(query_total))
+        
+        # Latency Histograms (Simplified: show avg if available via _sum/_count)
+        ingest_sum = next((v for k, v in metrics.items() if "openrag_ingest_duration_seconds_sum" in k), 0)
+        ingest_count = next((v for k, v in metrics.items() if "openrag_ingest_duration_seconds_count" in k), 1)
+        avg_ingest = ingest_sum / max(ingest_count, 1)
+        col3.metric("Avg Ingest Latency", f"{avg_ingest:.2f}s")
+        
+        query_sum = next((v for k, v in metrics.items() if "openrag_query_duration_seconds_sum" in k), 0)
+        query_count = next((v for k, v in metrics.items() if "openrag_query_duration_seconds_count" in k), 1)
+        avg_query = query_sum / max(query_count, 1)
+        col4.metric("Avg Query Latency", f"{avg_query:.2f}s")
+        
+        st.markdown("---")
+        
+        # Charts
+        c_left, c_right = st.columns(2)
+        
+        with c_left:
+            st.subheader("🚀 Ingestion Volume")
+            blocks = {k.split('"')[3]: v for k, v in metrics.items() if "openrag_ingest_blocks_total" in k and 'type=' in k}
+            if blocks:
+                st.bar_chart(blocks)
             else:
-                st.error(f"API Error: {res.status_code} - {res.text}")
+                st.info("Ingest some documents to see block distribution.")
                 
-        except Exception as e:
-            st.error(f"Error connecting to API: {e}")
+        with c_right:
+            st.subheader("💰 Token Consumption")
+            tokens = {k.split('"')[3]: v for k, v in metrics.items() if "openrag_llm_tokens_total" in k and 'model=' in k}
+            if tokens:
+                st.bar_chart(tokens)
+            else:
+                st.info("Perform some queries to see token usage.")
+
+        st.markdown("---")
+        st.subheader("🕵️ Advanced Tracing")
+        st.markdown("""
+        Automatic tracing is enabled via **OpenTelemetry**.  
+        Traces are exported as OTLP spans to your configured collector. 
+        """)
+        if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            st.success(f"Connected to OTLP Collector at: `{os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT')}`")
+        else:
+            st.info("No OTLP collector configured. Spans are being generated but not exported externally.")

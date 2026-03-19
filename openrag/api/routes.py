@@ -4,11 +4,12 @@ import time
 import os
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, File, UploadFile, Depends, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request, Response
 from typing import List
 
 from openrag.core import OpenRAG
 from openrag.api.models import QueryRequest, QueryResponse, IngestResponse, Citation
+from openrag.observability.metrics import MetricsManager
 
 router = APIRouter()
 
@@ -18,6 +19,11 @@ def get_rag(request: Request):
     if rag is None:
         raise HTTPException(status_code=503, detail="RAG engine not initialized")
     return rag
+
+@router.get("/metrics")
+async def get_metrics():
+    """Endpoint for Prometheus scraping."""
+    return Response(content=MetricsManager.get_latest(), media_type=MetricsManager.content_type())
 
 @router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest, rag: OpenRAG = Depends(get_rag)):
