@@ -220,11 +220,17 @@ class OpenRAG:
             from openrag.pipeline.dag_engine import build_default_pipeline
             from openrag.processors.text_processor import TextProcessor
             from openrag.processors.code_processor import CodeProcessor
+            from openrag.processors.image_processor import ImageProcessor
+            from openrag.processors.table_processor import TableProcessor
+            from openrag.processors.equation_processor import EquationProcessor
             from openrag.search.bm25_indexer import BM25Indexer
 
             processors = {
                 'text': TextProcessor(),
                 'code': CodeProcessor(),
+                'image': ImageProcessor(),
+                'table': TableProcessor(),
+                'equation': EquationProcessor(),
             }
             dag_engine = build_default_pipeline(self.config, processors=processors)
             registry = AdapterRegistry()
@@ -248,6 +254,8 @@ class OpenRAG:
                 embedding_engine=embedding_engine,
                 kg_builder=kg_builder,
                 bm25_indexer=bm25_indexer,
+                llm_func=self.llm_func,
+                vlm_func=self.vlm_func,
             )
         return self._orchestrator
 

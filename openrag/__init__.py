@@ -44,12 +44,15 @@ from openrag.parsers.code import PlainCodeAdapter  # noqa: E402
 from openrag.parsers.html import HTMLAdapter  # noqa: E402
 from openrag.parsers.pdf import PyMuPDFAdapter  # noqa: E402
 from openrag.parsers.text import PlainTextAdapter  # noqa: E402
+from openrag.parsers.image import ImageParserAdapter  # noqa: E402
 
 AdapterRegistry.register_parser(".pdf",  PyMuPDFAdapter)
 AdapterRegistry.register_parser(".txt",  PlainTextAdapter)
 AdapterRegistry.register_parser(".md",   PlainTextAdapter)
 AdapterRegistry.register_parser(".html", HTMLAdapter)
 AdapterRegistry.register_parser(".htm",  HTMLAdapter)
+for _ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"]:
+    AdapterRegistry.register_parser(_ext, ImageParserAdapter)
 for _ext in [".py", ".js", ".ts", ".go", ".java", ".rs", ".cpp", ".c"]:
     AdapterRegistry.register_parser(_ext, PlainCodeAdapter)
 

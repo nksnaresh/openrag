@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
         if not api_key:
             return "[Error: GEMINI_API_KEY not set]"
         import base64
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-flash-latest")
         image_part = {"mime_type": "image/png", "data": base64.b64decode(image_b64)}
         response = await model.generate_content_async([prompt, image_part])
         return response.text

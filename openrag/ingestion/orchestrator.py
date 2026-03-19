@@ -56,6 +56,8 @@ class IngestionOrchestrator:
         embedding_engine: EmbeddingEngine | None = None,
         kg_builder: KnowledgeGraphBuilder | None = None,
         bm25_indexer: BM25Indexer | None = None,
+        llm_func: Callable[..., Any] | None = None,
+        vlm_func: Callable[..., Any] | None = None,
     ) -> None:
         self._config = config
         self._registry = registry
@@ -65,6 +67,8 @@ class IngestionOrchestrator:
         self._embedding_engine = embedding_engine
         self._kg_builder = kg_builder
         self._bm25_indexer = bm25_indexer
+        self._llm_func = llm_func
+        self._vlm_func = vlm_func
 
     async def ingest_file(
         self,
@@ -143,8 +147,8 @@ class IngestionOrchestrator:
         )
         context = ProcessingContext(
             payload=payload,
-            llm_func=None,  # type: ignore[arg-type]
-            vlm_func=None,
+            llm_func=self._llm_func,  # type: ignore[arg-type]
+            vlm_func=self._vlm_func,
             context_config=ctx_config,
             tenant_id=metadata.tenant_id,
             namespace=metadata.namespace,
