@@ -55,6 +55,10 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "api_url" not in st.session_state:
     st.session_state.api_url = "http://localhost:8000/api/v1"
+if "show_telemetry" not in st.session_state:
+    st.session_state.show_telemetry = True
+if "last_telemetry" not in st.session_state:
+    st.session_state.last_telemetry = None
 
 # --- Sidebar ---
 with st.sidebar:
@@ -75,11 +79,23 @@ with st.sidebar:
                 try:
                     res = requests.post(f"{st.session_state.api_url}/ingest", files=files)
                     if res.status_code == 200:
+                        data = res.json()
                         st.success(f"Ingested {uploaded_file.name}")
+                        st.session_state.last_telemetry = {
+                            "type": "Ingestion",
+                            "file": uploaded_file.name,
+                            "status": data.get("status"),
+                            "block_count": data.get("block_count"),
+                            "raw": data
+                        }
                     else:
                         st.error(f"Failed to ingest {uploaded_file.name}: {res.text}")
                 except Exception as e:
                     st.error(f"Error connecting to API: {e}")
+    
+    st.markdown("---")
+    st.subheader("🖥️ UI Settings")
+    st.session_state.show_telemetry = st.checkbox("Show Telemetry Panel", value=st.session_state.show_telemetry)
     
     st.markdown("---")
     st.subheader("💡 Tips")
@@ -110,7 +126,15 @@ def get_metrics():
 # --- Main UI ---
 st.title("🤖 OpenRAG Explorer")
 
-tab_chat, tab_obs = st.tabs(["💬 Pro Query", "📊 Observability"])
+# Layout with optional telemetry panel
+if st.session_state.show_telemetry:
+    main_col, tel_col = st.columns([0.7, 0.3])
+else:
+    main_col = st.container()
+    tel_col = None
+
+with main_col:
+    tab_chat, tab_obs = st.tabs(["💬 Pro Query", "📊 Observability"])
 
 with tab_chat:
     st.markdown("Query your private knowledge base with multimodal RAG.")
@@ -170,6 +194,14 @@ with tab_chat:
                         "content": full_response,
                         "citations": citations
                     })
+                    
+                    st.session_state.last_telemetry = {
+                        "type": "Query",
+                        "text": prompt,
+                        "latency_ms": data.get("latency_ms"),
+                        "citations_count": len(citations),
+                        "raw": data
+                    }
                 else:
                     st.error(f"API Error: {res.status_code} - {res.text}")
             except Exception as e:
@@ -234,3 +266,35 @@ with tab_obs:
             st.success(f"Connected to OTLP Collector at: `{os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT')}`")
         else:
             st.info("No OTLP collector configured. Spans are being generated but not exported externally.")
+
+# --- Telemetry Panel (Right Side) ---
+if tel_col:
+    with tel_col:
+        st.subheader("📡 Real-time Telemetry")
+        if not st.session_state.last_telemetry:
+            st.info("No recent actions. Ingest a file or ask a question to see telemetry.")
+        else:
+            tel = st.session_state.last_telemetry
+            st.markdown(f"**Current Action**: `{tel['type']}`")
+            
+            if tel["type"] == "Ingestion":
+                st.write(f"📄 **File**: `{tel['file']}`")
+                st.write(f"✅ **Status**: `{tel['status']}`")
+                st.write(f"🧩 **Blocks**: `{tel['block_count']}`")
+            
+            elif tel["type"] == "Query":
+                st.write(f"⏱️ **Latency**: `{tel['latency_ms']:.2f}ms`")
+                st.write(f"📚 **Citations**: `{tel['citations_count']}`")
+                
+                if tel.get("raw") and "citations" in tel["raw"]:
+                    with st.expander("Extraction Details"):
+                        for i, cit in enumerate(tel["raw"]["citations"]):
+                            st.markdown(f"**[{i+1}] {cit['source_path']}**")
+                            st.caption(f"Score: {cit['score']:.4f} | Type: {cit['block_type']}")
+            
+            with st.expander("🔍 Raw JSON"):
+                st.json(tel["raw"])
+            
+            if st.button("🗑️ Clear Telemetry"):
+                st.session_state.last_telemetry = None
+                st.rerun()
