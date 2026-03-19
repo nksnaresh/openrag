@@ -1,13 +1,7 @@
-"""Embedding engine that orchestrates batching and caching.
-
-Wires together a BaseEmbeddingAdapter and a BaseEmbeddingCache to provide
-high-level embedding services for both ingestion and retrieval.
-"""
-
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from openrag.embeddings.base import BaseEmbeddingAdapter
 from openrag.embeddings.cache import BaseEmbeddingCache
@@ -30,18 +24,18 @@ class EmbeddingEngine:
         adapter: BaseEmbeddingAdapter,
         cache: BaseEmbeddingCache,
         batch_size: int = 100,
+        embedding_func: Callable[[list[str]], Awaitable[list[list[float]]]] | None = None,
     ) -> None:
         self._adapter = adapter
         self._cache = cache
         self._batch_size = batch_size
+        self._embedding_func = embedding_func
 
     async def embed_blocks(self, blocks: list[ProcessedBlock]) -> None:
         """Generate and attach embeddings to a list of ProcessedBlocks.
 
         Uses the cache to avoid re-embedding identical text. Updates each
-        block's internal state (embedding_text is used as the key).
-        Note: The vector itself is typically stored in the Vector DB,
-        but the engine ensures the computation is done/cached.
+        block's internal state.
         """
         if not blocks:
             return
@@ -59,9 +53,7 @@ class EmbeddingEngine:
             # Check cache
             cached_vector = await self._cache.get(text_hash)
             if cached_vector is not None:
-                # Cache hit: we don't store the vector in ProcessedBlock (no field for it),
-                # but we could if the model supported it. For now, the engine's job
-                # is to ensure the cache is warm for the vector store upsert.
+                block.embedding = cached_vector
                 continue
                 
             if text_hash not in to_embed_map:
@@ -75,15 +67,21 @@ class EmbeddingEngine:
         hashes = list(to_embed_map.keys())
         texts = [to_embed_map[h][0] for h in hashes]
         
+        all_vectors: list[list[float]] = []
         for i in range(0, len(texts), self._batch_size):
             batch_texts = texts[i : i + self._batch_size]
-            batch_hashes = hashes[i : i + self._batch_size]
             
-            vectors = await self._adapter.embed(batch_texts)
-            
-            # 3. Update cache
-            for text_hash, vector in zip(batch_hashes, vectors, strict=True):
-                await self._cache.set(text_hash, vector)
+            if self._embedding_func:
+                vectors = await self._embedding_func(batch_texts)
+            else:
+                vectors = await self._adapter.embed(batch_texts)
+            all_vectors.extend(vectors)
+        
+        # 3. Update cache and blocks
+        for text_hash, vector in zip(hashes, all_vectors, strict=True):
+            await self._cache.set(text_hash, vector)
+            for block in to_embed_map[text_hash][1]:
+                block.embedding = vector
 
     async def embed_query(self, text: str) -> Any:  # noqa: ANN401
         """Generate an embedding for a query string, using cache if available."""
@@ -95,7 +93,10 @@ class EmbeddingEngine:
         if cached is not None:
             return cached
             
-        vectors = await self._adapter.embed([text])
+        if self._embedding_func:
+            vectors = await self._embedding_func([text])
+        else:
+            vectors = await self._adapter.embed([text])
         if not vectors:
             return None
             

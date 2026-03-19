@@ -11,6 +11,7 @@ def _block(
     idx: int, text: str, page: int | None = None, btype: BlockType = BlockType.TEXT
 ) -> ContentBlock:
     return ContentBlock(
+        document_id="doc1",
         block_id=f"b{idx}",
         block_type=btype,
         sequence_index=idx,
@@ -45,7 +46,7 @@ class TestContextEnricher:
 
     def test_block_window_excludes_non_text(self) -> None:
         target = _block(1, "target text")
-        img = ContentBlock(block_id="img", block_type=BlockType.IMAGE,
+        img = ContentBlock(document_id="doc1", block_id="img", block_type=BlockType.IMAGE,
                            sequence_index=0, raw_content=b"bytes")
         payload = _payload(img, target)
         config = ContextWindowConfig(strategy="block_window", window_size=2, max_tokens=2000)

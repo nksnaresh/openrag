@@ -49,3 +49,10 @@ openrag_store.db
 # Distribution
 *.tar.gz
 *.whl
+
+# Runtime Data
+openrag_data/
+*.log
+
+# Diagnostics & Demo
+demo/

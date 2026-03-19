@@ -35,6 +35,7 @@ def _make_payload(doc_id: str = "sha256abc", namespace: str = "test-ns") -> Cont
         tenant_id="tenant1",
         metadata=DocumentMeta(title="Test Doc", author="Author"),
         blocks=[ContentBlock(
+            document_id=doc_id,
             block_id="b0", block_type=BlockType.TEXT,
             sequence_index=0, raw_content="hello",
         )],
@@ -168,7 +169,7 @@ class TestNetworkXAdapter:
     @pytest.mark.asyncio
     async def test_upsert_and_get_node(self, adapter: NetworkXAdapter) -> None:
         node = _make_node("n1")
-        await adapter.upsert_node(node)
+        await adapter.upsert_node("ns1", node)
         retrieved = await adapter.get_node("n1")
         assert retrieved is not None
         assert retrieved.node_id == "n1"
@@ -181,19 +182,19 @@ class TestNetworkXAdapter:
 
     @pytest.mark.asyncio
     async def test_upsert_edge_connects_nodes(self, adapter: NetworkXAdapter) -> None:
-        await adapter.upsert_node(_make_node("a"))
-        await adapter.upsert_node(_make_node("b"))
+        await adapter.upsert_node("ns1", _make_node("a"))
+        await adapter.upsert_node("ns1", _make_node("b"))
         edge = _make_edge("a", "b", EdgeType.CONTAINS)
-        await adapter.upsert_edge(edge)
+        await adapter.upsert_edge("ns1", edge)
         sg = await adapter.traverse("a", depth=1)
         assert "b" in sg.node_ids()
 
     @pytest.mark.asyncio
     async def test_traverse_respects_depth(self, adapter: NetworkXAdapter) -> None:
         for nid in ["r", "c1", "c2"]:
-            await adapter.upsert_node(_make_node(nid))
-        await adapter.upsert_edge(_make_edge("r", "c1"))
-        await adapter.upsert_edge(_make_edge("c1", "c2"))
+            await adapter.upsert_node("ns1", _make_node(nid))
+        await adapter.upsert_edge("ns1", _make_edge("r", "c1"))
+        await adapter.upsert_edge("ns1", _make_edge("c1", "c2"))
         # depth=1: only root and c1
         sg = await adapter.traverse("r", depth=1)
         assert "c1" in sg.node_ids()
@@ -212,8 +213,8 @@ class TestNetworkXAdapter:
     async def test_find_nodes_by_type(self, adapter: NetworkXAdapter) -> None:
         node_e = GraphNode("e1", NodeType.ENTITY, "Entity", "t1", "ns1")
         node_c = GraphNode("c1", NodeType.CHUNK,  "Chunk",  "t1", "ns1")
-        await adapter.upsert_node(node_e)
-        await adapter.upsert_node(node_c)
+        await adapter.upsert_node("ns1", node_e)
+        await adapter.upsert_node("ns1", node_c)
         entities = await adapter.find_nodes("ns1", node_type=NodeType.ENTITY.value)
         assert all(n.node_type == NodeType.ENTITY for n in entities)
         assert any(n.node_id == "e1" for n in entities)
@@ -221,9 +222,9 @@ class TestNetworkXAdapter:
     @pytest.mark.asyncio
     async def test_find_nodes_by_label(self, adapter: NetworkXAdapter) -> None:
         await adapter.upsert_node(
-            GraphNode("x1", NodeType.ENTITY, "Transformer model", "t1", "ns1")
+            "ns1", GraphNode("x1", NodeType.ENTITY, "Transformer model", "t1", "ns1")
         )
-        await adapter.upsert_node(GraphNode("x2", NodeType.ENTITY, "BERT tokenizer", "t1", "ns1"))
+        await adapter.upsert_node("ns1", GraphNode("x2", NodeType.ENTITY, "BERT tokenizer", "t1", "ns1"))
         results = await adapter.find_nodes("ns1", label_contains="Transformer")
         assert len(results) == 1
         assert results[0].node_id == "x1"
@@ -231,15 +232,15 @@ class TestNetworkXAdapter:
     @pytest.mark.asyncio
     async def test_find_nodes_limit(self, adapter: NetworkXAdapter) -> None:
         for i in range(10):
-            await adapter.upsert_node(_make_node(f"node{i}", namespace="ns1"))
+            await adapter.upsert_node("ns1", _make_node(f"node{i}", namespace="ns1"))
         results = await adapter.find_nodes("ns1", limit=3)
         assert len(results) <= 3
 
     @pytest.mark.asyncio
     async def test_delete_node_removes_edges(self, adapter: NetworkXAdapter) -> None:
-        await adapter.upsert_node(_make_node("a"))
-        await adapter.upsert_node(_make_node("b"))
-        await adapter.upsert_edge(_make_edge("a", "b"))
+        await adapter.upsert_node("ns1", _make_node("a"))
+        await adapter.upsert_node("ns1", _make_node("b"))
+        await adapter.upsert_edge("ns1", _make_edge("a", "b"))
         await adapter.delete_node("a")
         assert await adapter.get_node("a") is None
         sg = await adapter.traverse("b", depth=1)

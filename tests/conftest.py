@@ -11,6 +11,10 @@ from openrag.models.content import (
     ContentPayload,
     DocumentMeta,
 )
+from openrag.models.processing import ProcessedBlock
+
+
+_DOC_ID = "sha256-test-doc"
 
 
 @pytest.fixture
@@ -26,6 +30,7 @@ def base_config(tmp_path) -> OpenRAGConfig:
 @pytest.fixture
 def sample_text_block() -> ContentBlock:
     return ContentBlock(
+        document_id=_DOC_ID,
         block_id="block-text-001",
         block_type=BlockType.TEXT,
         sequence_index=0,
@@ -37,6 +42,7 @@ def sample_text_block() -> ContentBlock:
 @pytest.fixture
 def sample_image_block() -> ContentBlock:
     return ContentBlock(
+        document_id=_DOC_ID,
         block_id="block-img-001",
         block_type=BlockType.IMAGE,
         sequence_index=1,
@@ -49,9 +55,20 @@ def sample_image_block() -> ContentBlock:
 @pytest.fixture
 def sample_payload(sample_text_block, sample_image_block) -> ContentPayload:
     return ContentPayload(
-        document_id="sha256-test-doc",
+        document_id=_DOC_ID,
         source_path="/tmp/test_doc.pdf",
         tenant_id="test-tenant",
         metadata=DocumentMeta(title="Test Document", page_count=5),
         blocks=[sample_text_block, sample_image_block],
+    )
+
+
+@pytest.fixture
+def sample_processed_block(sample_text_block) -> ProcessedBlock:
+    """A ready-made ProcessedBlock for tests that need one."""
+    return ProcessedBlock(
+        source_block=sample_text_block,
+        natural_language_description="OpenRAG is a multimodal RAG framework.",
+        embedding_text="OpenRAG is a multimodal RAG framework.",
+        confidence_score=1.0,
     )

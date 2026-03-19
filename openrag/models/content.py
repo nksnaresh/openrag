@@ -56,6 +56,9 @@ class ContentBlock:
     block_id: str
     """Stable unique identifier: sha256(document_id + sequence_index)."""
 
+    document_id: str
+    """SHA-256 hex digest of the source document."""
+
     block_type: BlockType
     """Modality of this content block."""
 

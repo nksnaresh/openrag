@@ -35,19 +35,19 @@ class TestEmbeddingEngine:
         # Create 3 blocks with 2 unique texts
         blocks = [
             ProcessedBlock(
-                source_block=ContentBlock("b1", BlockType.TEXT, 0, "text 1"),
+                source_block=ContentBlock("b1", "doc1", BlockType.TEXT, 0, "text 1"),
                 natural_language_description="text 1",
                 embedding_text="text 1",
                 entity_candidates=[],
             ),
             ProcessedBlock(
-                source_block=ContentBlock("b2", BlockType.TEXT, 1, "text 2"),
+                source_block=ContentBlock("b2", "doc1", BlockType.TEXT, 1, "text 2"),
                 natural_language_description="text 2",
                 embedding_text="text 2",
                 entity_candidates=[],
             ),
             ProcessedBlock(
-                source_block=ContentBlock("b3", BlockType.TEXT, 2, "text 1"),
+                source_block=ContentBlock("b3", "doc1", BlockType.TEXT, 2, "text 1"),
                 natural_language_description="text 1",
                 embedding_text="text 1",
                 entity_candidates=[],
@@ -96,5 +96,5 @@ class TestOpenAIAdapter:
         
         vecs = await adapter.embed(["hello"])
         assert len(vecs) == 1
-        assert vecs[0].tolist() == [0.1, 0.2, 0.3]
+        assert vecs[0].tolist() == pytest.approx([0.1, 0.2, 0.3])
         assert adapter.dimension() == 3

@@ -162,13 +162,19 @@ class LLMConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OPENRAG_LLM_")
 
 
+class RerankConfig(BaseSettings):
+    enabled: bool = False
+    adapter: Literal["cohere", "huggingface"] = "huggingface"
+    model: str = "BAAI/bge-reranker-base"
+    top_n: int = 10
+
+    model_config = SettingsConfigDict(env_prefix="OPENRAG_RERANK_")
+
+
 class RetrievalConfig(BaseSettings):
     default_mode: str = "hybrid"
     top_k: int = 20
     rrf_k: int = 60
-    reranker_enabled: bool = False
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    reranker_top_n: int = 10
     hyde_enabled: bool = False
 
     model_config = SettingsConfigDict(env_prefix="OPENRAG_RETRIEVAL_")
@@ -232,6 +238,7 @@ class OpenRAGConfig(BaseSettings):
     document_store: DocumentStoreConfig = Field(default_factory=DocumentStoreConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
     api: APIServerConfig = Field(default_factory=APIServerConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)

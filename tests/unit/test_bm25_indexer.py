@@ -30,7 +30,13 @@ class TestBM25Indexer:
     ) -> None:
         blocks = [
             ProcessedBlock(
-                source_block=ContentBlock("b1", BlockType.TEXT, 0, "content 1"),
+                source_block=ContentBlock(
+                    block_id="b1",
+                    document_id="doc1",
+                    block_type=BlockType.TEXT,
+                    sequence_index=0,
+                    raw_content="content 1"
+                ),
                 natural_language_description="desc 1",
                 embedding_text="tokenized text 1",
                 entity_candidates=[],

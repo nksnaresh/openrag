@@ -32,6 +32,7 @@ class MockParser(BaseParserAdapter):
             metadata=DocumentMeta(),
             blocks=[
                 ContentBlock(
+                    document_id=content_hash,
                     block_id=f"{content_hash[:8]}-0",
                     block_type=BlockType.TEXT,
                     sequence_index=0,

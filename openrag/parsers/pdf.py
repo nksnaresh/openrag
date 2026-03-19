@@ -79,6 +79,7 @@ class PyMuPDFAdapter(BaseParserAdapter):
                 full_text = " ".join(page_text_parts)
                 rect = page.rect
                 blocks.append(ContentBlock(
+                    document_id=document_id,
                     block_id=f"{document_id[:8]}-text-{seq}",
                     block_type=BlockType.TEXT,
                     sequence_index=seq,
@@ -99,6 +100,7 @@ class PyMuPDFAdapter(BaseParserAdapter):
                 img_bytes = img_data.get("image", b"")
                 if img_bytes:
                     blocks.append(ContentBlock(
+                        document_id=document_id,
                         block_id=f"{document_id[:8]}-img-{seq}",
                         block_type=BlockType.IMAGE,
                         sequence_index=seq,
@@ -114,6 +116,7 @@ class PyMuPDFAdapter(BaseParserAdapter):
                     markdown = self._table_to_markdown(table)
                     if markdown:
                         blocks.append(ContentBlock(
+                            document_id=document_id,
                             block_id=f"{document_id[:8]}-tbl-{seq}",
                             block_type=BlockType.TABLE,
                             sequence_index=seq,

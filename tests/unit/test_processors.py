@@ -25,6 +25,7 @@ from openrag.processors.text_processor import TextProcessor
 
 def _block(btype: BlockType, content: object, meta: dict | None = None) -> ContentBlock:
     return ContentBlock(
+        document_id="doc-test",
         block_id="blk-test",
         block_type=btype,
         sequence_index=0,

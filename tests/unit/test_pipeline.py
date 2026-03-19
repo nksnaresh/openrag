@@ -41,6 +41,7 @@ def _make_payload(*block_types: BlockType) -> ContentPayload:
         blocks=[
             ContentBlock(
                 block_id=f"b{i}",
+                document_id="doc-123",
                 block_type=bt,
                 sequence_index=i,
                 raw_content=f"content {i}",

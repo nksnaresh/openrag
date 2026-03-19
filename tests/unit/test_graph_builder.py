@@ -7,6 +7,7 @@ from openrag.knowledge.entity_extractor import EntityExtractor
 from openrag.knowledge.graph_builder import KnowledgeGraphBuilder
 from openrag.knowledge.relationship_extractor import RelationshipExtractor
 from openrag.models.content import BlockType, ContentBlock, ContentPayload, DocumentMeta
+from openrag.models.graph import NodeType
 from openrag.models.processing import (
     EntityCandidate,
     ProcessedBlock,
@@ -40,7 +41,13 @@ class TestKnowledgeGraphBuilder:
         
         blocks = [
             ProcessedBlock(
-                source_block=ContentBlock("b1", BlockType.TEXT, 0, "content"),
+                source_block=ContentBlock(
+                    block_id="b1",
+                    document_id="doc1",
+                    block_type=BlockType.TEXT,
+                    sequence_index=0,
+                    raw_content="content"
+                ),
                 natural_language_description="desc",
                 embedding_text="emb",
                 entity_candidates=[
@@ -51,6 +58,7 @@ class TestKnowledgeGraphBuilder:
         
         context = MagicMock(spec=ProcessingContext)
         context.namespace = "ns1"
+        context.tenant_id = "t1"
         context.llm_func = AsyncMock(return_value='{"relationships": []}')
         
         await builder.build_from_blocks(blocks, payload, context)
@@ -63,10 +71,10 @@ class TestKnowledgeGraphBuilder:
         
         # Verify document node ID
         doc_node = mock_graph_db.upsert_node.call_args_list[0][0][1]
-        assert doc_node["id"] == "DOC:doc1"
-        assert doc_node["type"] == "Document"
+        assert doc_node.node_id == "DOC:doc1"
+        assert doc_node.node_type == NodeType.DOCUMENT
         
         # Verify entity node
         ent_node = mock_graph_db.upsert_node.call_args_list[1][0][1]
-        assert ent_node["id"] == "ENT:Apple Inc."
-        assert ent_node["canonical_name"] == "Apple Inc."
+        assert ent_node.node_id == "ENT:Apple Inc."
+        assert ent_node.label == "Apple"

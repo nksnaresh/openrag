@@ -1,11 +1,3 @@
-"""NetworkX-backed in-memory graph database adapter.
-
-Uses `networkx.DiGraph` per namespace for dev/test. All data is held in
-RAM. Register via:
-
-    AdapterRegistry.register_graph_db("networkx", NetworkXAdapter)
-"""
-
 from __future__ import annotations
 
 import threading
@@ -24,7 +16,7 @@ class NetworkXAdapter(BaseGraphDBAdapter):
     synchronous under the hood but wrapped in async for interface compliance.
     """
 
-    def __init__(self, config: object = None) -> None:
+    def __init__(self, config: object = None, **kwargs: Any) -> None:
         # namespace → nx.DiGraph
         self._graphs: dict[str, nx.DiGraph] = {}
         self._lock = threading.Lock()
@@ -38,35 +30,24 @@ class NetworkXAdapter(BaseGraphDBAdapter):
     async def initialize(self) -> None:
         """No-op for in-memory adapter."""
 
-    async def upsert_node(self, node: GraphNode) -> None:
+    async def upsert_node(self, namespace: str, node: GraphNode) -> None:
         """Insert or update a graph node (edges are preserved on update)."""
         with self._lock:
-            g = self._graph(node.namespace)
+            g = self._graph(namespace)
             g.add_node(
                 node.node_id,
                 node_type=node.node_type.value,
                 label=node.label,
                 tenant_id=node.tenant_id,
-                namespace=node.namespace,
+                namespace=namespace,
                 **node.properties,
             )
 
-    async def upsert_edge(self, edge: GraphEdge) -> None:
+    async def upsert_edge(self, namespace: str, edge: GraphEdge) -> None:
         """Insert or update a directed edge between two nodes."""
         with self._lock:
-            # Determine which graph to use from source node's namespace.
-            # Edge is stored in the graph of its source node's namespace.
-            # If neither endpoint exists yet in any graph, we use a fallback.
-            target_graph: nx.DiGraph | None = None
-            for g in self._graphs.values():
-                if g.has_node(edge.source_id):
-                    target_graph = g
-                    break
-            if target_graph is None:
-                # Edge added before nodes — store in a default graph
-                target_graph = self._graph("__default__")
-
-            target_graph.add_edge(
+            g = self._graph(namespace)
+            g.add_edge(
                 edge.source_id,
                 edge.target_id,
                 edge_id=edge.edge_id,
@@ -168,6 +149,30 @@ class NetworkXAdapter(BaseGraphDBAdapter):
                     break
             return results
 
+    async def search_context(
+        self, query: str, namespace: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Simple keyword-based search for entity context in the graph."""
+        keywords = set(query.lower().split())
+        # Greedy search through nodes in this namespace
+        nodes = await self.find_nodes(namespace, limit=limit * 10)
+        
+        results = []
+        for node in nodes:
+            node_text = (node.label + " " + " ".join(str(v) for v in node.properties.values())).lower()
+            overlap = len(keywords.intersection(set(node_text.split())))
+            if overlap > 0:
+                results.append({
+                    "id": node.node_id,
+                    "content": f"Entity [{node.label}]: {node.properties.get('description', 'No description available')}",
+                    "score": float(overlap),
+                    "namespace": namespace,
+                    "mode": "graph"
+                })
+        
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
+
     async def delete_node(self, node_id: str) -> None:
         """Delete a node and all its incident edges (searches all namespaces)."""
         with self._lock:
@@ -175,6 +180,8 @@ class NetworkXAdapter(BaseGraphDBAdapter):
                 if g.has_node(node_id):
                     g.remove_node(node_id)
                     return
+
+    async def close(self) -> None: pass
 
     async def clear_namespace(self, namespace: str) -> None:
         """Remove the entire graph for a namespace (useful for tests)."""

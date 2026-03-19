@@ -29,7 +29,7 @@ class TestPhase3Integration:
         mock_parser_instance = MagicMock(spec=BaseParserAdapter)
         mock_parser_instance.parse = AsyncMock(return_value=ContentPayload(
             document_id="h1", source_path="f.txt", tenant_id="t1", 
-            metadata=DocumentMeta(), blocks=[ContentBlock("b1", BlockType.TEXT, 0, "txt")]
+            metadata=DocumentMeta(), blocks=[ContentBlock("b1", "h1", BlockType.TEXT, 0, "txt")]
         ))
         
         # Mock registry
@@ -40,7 +40,7 @@ class TestPhase3Integration:
         dag_engine = MagicMock(spec=DAGPipelineEngine)
         dag_engine.execute = AsyncMock(return_value=[
             ProcessedBlock(
-                source_block=ContentBlock("b1", BlockType.TEXT, 0, "txt"),
+                source_block=ContentBlock("b1", "h1", BlockType.TEXT, 0, "txt"),
                 natural_language_description="desc",
                 embedding_text="emb",
                 entity_candidates=[],
@@ -56,6 +56,9 @@ class TestPhase3Integration:
         
         bm25_indexer = MagicMock(spec=BM25Indexer)
         bm25_indexer.index_blocks = AsyncMock()
+
+        vector_db = MagicMock()
+        vector_db.upsert = AsyncMock()
         
         # 3. Instantiate Orchestrator
         orchestrator = IngestionOrchestrator(
@@ -63,6 +66,7 @@ class TestPhase3Integration:
             registry=registry,
             dag_engine=dag_engine,
             doc_store=doc_store,
+            vector_db=vector_db,
             embedding_engine=emb_engine,
             kg_builder=kg_builder,
             bm25_indexer=bm25_indexer,

@@ -23,7 +23,7 @@ class InMemoryVectorAdapter(BaseVectorDBAdapter):
     Not suitable for production (no persistence, O(N) scan per query).
     """
 
-    def __init__(self, config: object = None) -> None:
+    def __init__(self, config: object = None, **kwargs: Any) -> None:
         # namespace → {id: VectorRecord}
         self._store: dict[str, dict[str, VectorRecord]] = {}
         self._lock = threading.Lock()
@@ -98,3 +98,6 @@ class InMemoryVectorAdapter(BaseVectorDBAdapter):
         """Remove all records in a namespace (useful for tests)."""
         with self._lock:
             self._store.pop(namespace, None)
+
+    async def close(self) -> None:
+        """No-op for in-memory adapter."""

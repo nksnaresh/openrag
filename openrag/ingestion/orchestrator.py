@@ -1,10 +1,11 @@
+from __future__ import annotations
+
+import traceback
 """Ingestion orchestrator — top-level coordinator for file ingestion.
 
 Wires together: deduplication → parser selection → DAG pipeline →
 document storage.
 """
-
-from __future__ import annotations
 
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from openrag.parsers.base import ParseOptions
 from openrag.pipeline.dag_engine import DAGPipelineEngine
 from openrag.registry import AdapterRegistry, RegistryError
 from openrag.search.bm25_indexer import BM25Indexer
-from openrag.storage.base import BaseDocumentAdapter
+from openrag.storage.base import BaseDocumentAdapter, BaseVectorDBAdapter
 
 
 class IngestionOrchestrator:
@@ -46,6 +47,7 @@ class IngestionOrchestrator:
         registry: AdapterRegistry,
         dag_engine: DAGPipelineEngine,
         doc_store: BaseDocumentAdapter,
+        vector_db: BaseVectorDBAdapter | None = None,
         embedding_engine: EmbeddingEngine | None = None,
         kg_builder: KnowledgeGraphBuilder | None = None,
         bm25_indexer: BM25Indexer | None = None,
@@ -54,6 +56,7 @@ class IngestionOrchestrator:
         self._registry = registry
         self._dag_engine = dag_engine
         self._doc_store = doc_store
+        self._vector_db = vector_db
         self._embedding_engine = embedding_engine
         self._kg_builder = kg_builder
         self._bm25_indexer = bm25_indexer
@@ -62,22 +65,8 @@ class IngestionOrchestrator:
         self,
         path: str | Path,
         metadata: IngestMetadata,
+        acl: dict[str, list[str]] | None = None,
     ) -> JobResult:
-        """Ingest a single file through the full pipeline.
-
-        Steps:
-            1. Compute SHA-256 hash → dedup check.
-            2. Look up parser by file extension.
-            3. Parse file → ContentPayload.
-            4. Build ProcessingContext.
-            5. Execute DAG pipeline → list[ProcessedBlock].
-            6. Persist document record to doc store.
-            7. Return JobResult.
-
-        Returns:
-            JobResult with ``status="completed"`` or ``status="skipped"``
-            (duplicate) or ``status="error"`` on failure.
-        """
         path = Path(path)
 
         # 1. Hash + dedup
@@ -91,7 +80,15 @@ class IngestionOrchestrator:
                 reason=f"Cannot read file: {exc}",
             )
 
-        if await is_duplicate(content_hash, metadata.namespace, self._doc_store):
+        # Only skip if the document exists in doc_store AND vector DB has data.
+        # After a server restart the in-memory vector DB is wiped, so we must
+        # re-ingest even if the doc_store still has the hash recorded.
+        is_dup = await is_duplicate(content_hash, metadata.namespace, self._doc_store)
+        if is_dup and self._vector_db is not None:
+            vector_count = await self._vector_db.count(metadata.namespace)
+            if vector_count == 0:
+                is_dup = False  # Vector DB is empty — force re-ingest
+        if is_dup:
             return JobResult(
                 job_id=content_hash,
                 status=JobStatus.SKIPPED,
@@ -126,10 +123,10 @@ class IngestionOrchestrator:
                 job_id=content_hash,
                 status=JobStatus.FAILED,
                 document_id=content_hash,
-                reason=f"Parser error: {exc}",
+                reason=f'Parser error: {exc} (Path: {path})',
             )
 
-        # 4. Build processing context (no LLM/VLM in Phase 2 base config)
+        # 4. Build processing context
         ctx_config = ContextWindowConfig(
             strategy=self._config.context.strategy,
             window_size=self._config.context.window_size,
@@ -163,7 +160,25 @@ class IngestionOrchestrator:
                 
                 # B. Embedding indexing
                 if self._embedding_engine:
-                    tg.start_soon(self._embedding_engine.embed_blocks, processed_blocks)
+                    await self._embedding_engine.embed_blocks(processed_blocks)
+                    # Sync blocks to Vector DB
+                    from openrag.storage.base import VectorRecord
+                    records = [
+                        VectorRecord(
+                            id=b.block_id,
+                            vector=b.embedding,
+                            payload={
+                                "content": b.content,
+                                "document_id": b.document_id,
+                                "source_path": str(path),
+                                "block_type": b.block_type.value,
+                                "page_number": b.page_number,
+                                "index": b.index
+                            }
+                        )
+                        for b in processed_blocks if b.embedding is not None
+                    ]
+                    tg.start_soon(self._vector_db.upsert, metadata.namespace, records)
                 
                 # C. Knowledge Graph indexing
                 if self._kg_builder:
@@ -178,7 +193,7 @@ class IngestionOrchestrator:
                 job_id=content_hash,
                 status=JobStatus.FAILED,
                 document_id=content_hash,
-                reason=f"Indexing error: {exc}",
+                reason=f"Indexing error: {exc}\n{traceback.format_exc()}",
             )
 
         return JobResult(

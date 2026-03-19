@@ -88,7 +88,7 @@ class OpenRAG:
         graph_db_cls = AdapterRegistry.get_graph_db(self.config.graph_db.adapter)
         doc_store_cls = AdapterRegistry.get_doc_store(self.config.document_store.adapter)
 
-        self._vector_db = vector_db_cls(self.config.vector_db)
+        self._vector_db = vector_db_cls(self.config.vector_db, working_dir=self.config.working_dir)
         self._graph_db = graph_db_cls(self.config.graph_db)
         self._doc_store = doc_store_cls(self.config.document_store)
 
@@ -98,16 +98,29 @@ class OpenRAG:
 
         self._initialized = True
 
-    async def close(self) -> None:
-        """Release all resources and flush pending writes."""
-        self._initialized = False
+    @property
+    def is_initialized(self) -> bool:
+        return self._initialized
+
+    def _require_initialized(self) -> None:
+        if not self._initialized:
+            raise RuntimeError("OpenRAG not initialized. Call await rag.initialize() first.")
 
     async def __aenter__(self) -> OpenRAG:
         await self.initialize()
         return self
 
-    async def __aexit__(self, *_: object) -> None:
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
+
+    async def close(self) -> None:
+        """Close all storage connections."""
+        if not self._initialized:
+            return
+        await self._vector_db.close()
+        await self._graph_db.close()
+        await self._doc_store.close()
+        self._initialized = False
 
     # ── Ingestion ──────────────────────────────────────────────────────────────
 
@@ -205,9 +218,15 @@ class OpenRAG:
             from openrag.ingestion.orchestrator import IngestionOrchestrator
             from openrag.knowledge.graph_builder import KnowledgeGraphBuilder
             from openrag.pipeline.dag_engine import build_default_pipeline
+            from openrag.processors.text_processor import TextProcessor
+            from openrag.processors.code_processor import CodeProcessor
             from openrag.search.bm25_indexer import BM25Indexer
 
-            dag_engine = build_default_pipeline(self.config, processors={})
+            processors = {
+                'text': TextProcessor(),
+                'code': CodeProcessor(),
+            }
+            dag_engine = build_default_pipeline(self.config, processors=processors)
             registry = AdapterRegistry()
 
             # Initialize Phase 3 indexing engines
@@ -215,6 +234,7 @@ class OpenRAG:
             embedding_engine = EmbeddingEngine(
                 adapter=emb_cls(self.config.embedding),
                 cache=InMemoryEmbeddingCache(),
+                embedding_func=self.embedding_func,
             )
             kg_builder = KnowledgeGraphBuilder(graph_db=self._graph_db)
             bm25_indexer = BM25Indexer(doc_store=self._doc_store)
@@ -224,6 +244,7 @@ class OpenRAG:
                 registry=registry,
                 dag_engine=dag_engine,
                 doc_store=self._doc_store,
+                vector_db=self._vector_db,
                 embedding_engine=embedding_engine,
                 kg_builder=kg_builder,
                 bm25_indexer=bm25_indexer,
@@ -246,6 +267,7 @@ class OpenRAG:
             embedding_engine = EmbeddingEngine(
                 adapter=emb_cls(self.config.embedding),
                 cache=InMemoryEmbeddingCache(),
+                embedding_func=self.embedding_func,
             )
 
             # 2. Hybrid Searcher

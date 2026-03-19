@@ -57,6 +57,7 @@ class DoclingAdapter(BaseParserAdapter):
                 continue
             btype = self._classify(element_text)
             blocks.append(ContentBlock(
+                document_id=document_id,
                 block_id=f"{document_id[:8]}-{seq}",
                 block_type=btype,
                 sequence_index=seq,

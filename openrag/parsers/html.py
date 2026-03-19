@@ -77,6 +77,7 @@ class HTMLAdapter(BaseParserAdapter):
                 text = element.get_text(separator=" ", strip=True)
                 if len(text) > 20:
                     blocks.append(ContentBlock(
+                        document_id=document_id,
                         block_id=f"{document_id[:8]}-text-{seq}",
                         block_type=BlockType.TEXT,
                         sequence_index=seq,
@@ -88,6 +89,7 @@ class HTMLAdapter(BaseParserAdapter):
                 text = "# " + element.get_text(strip=True)
                 if text.strip():
                     blocks.append(ContentBlock(
+                        document_id=document_id,
                         block_id=f"{document_id[:8]}-head-{seq}",
                         block_type=BlockType.TEXT,
                         sequence_index=seq,
@@ -100,6 +102,7 @@ class HTMLAdapter(BaseParserAdapter):
                 code = element.get_text()
                 if len(code.strip()) > 10:
                     blocks.append(ContentBlock(
+                        document_id=document_id,
                         block_id=f"{document_id[:8]}-code-{seq}",
                         block_type=BlockType.CODE,
                         sequence_index=seq,
@@ -111,6 +114,7 @@ class HTMLAdapter(BaseParserAdapter):
                 md = self._table_to_markdown(element)
                 if md:
                     blocks.append(ContentBlock(
+                        document_id=document_id,
                         block_id=f"{document_id[:8]}-tbl-{seq}",
                         block_type=BlockType.TABLE,
                         sequence_index=seq,

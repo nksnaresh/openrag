@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Any
 from openrag.knowledge.entity_extractor import EntityExtractor
 from openrag.knowledge.relationship_extractor import RelationshipExtractor
 from openrag.models.content import BlockType
+from openrag.models.graph import EdgeType, GraphEdge, GraphNode, NodeType
 
 if TYPE_CHECKING:
     from openrag.models.content import ContentPayload
     from openrag.models.processing import ProcessedBlock, ProcessingContext
-    from openrag.storage.graph.base import BaseGraphDBAdapter
+    from openrag.storage.base import BaseGraphDBAdapter
 
 
 class KnowledgeGraphBuilder:
@@ -49,18 +50,19 @@ class KnowledgeGraphBuilder:
             return
 
         namespace = context.namespace
+        tenant_id = context.tenant_id
         doc_id = payload.document_id
 
         # 1. UPSERT Document node
-        await self._graph_db.upsert_node(
-            namespace,
-            {
-                "id": f"DOC:{doc_id}",
-                "type": "Document",
-                "title": payload.metadata.title or doc_id,
-                "source_path": payload.source_path,
-            },
+        doc_node = GraphNode(
+            node_id=f"DOC:{doc_id}",
+            node_type=NodeType.DOCUMENT,
+            label=payload.metadata.title or doc_id,
+            tenant_id=tenant_id,
+            namespace=namespace,
+            properties={"source_path": payload.source_path}
         )
+        await self._graph_db.upsert_node(namespace, doc_node)
 
         # 2. RESOLVE Entities
         all_candidates = []
@@ -72,42 +74,49 @@ class KnowledgeGraphBuilder:
         # 3. UPSERT Entity nodes and edges to Document
         for ent in resolved_entities:
             ent_id = f"ENT:{ent['canonical_name']}"
-            await self._graph_db.upsert_node(
-                namespace,
-                {
-                    "id": ent_id,
-                    "type": "Entity",
-                    "name": ent["name"],
+            ent_node = GraphNode(
+                node_id=ent_id,
+                node_type=NodeType.ENTITY,
+                label=ent["name"],
+                tenant_id=tenant_id,
+                namespace=namespace,
+                properties={
                     "kind": ent["type"],
                     "canonical_name": ent["canonical_name"],
-                },
+                }
             )
-            # Edge: Document -> Entity (CONTAINS_KNOWLEDGE_ABOUT)
-            await self._graph_db.upsert_edge(
-                namespace,
-                f"DOC:{doc_id}",
-                ent_id,
-                "MENTIONS",
-                {"confidence": ent["confidence"]},
+            await self._graph_db.upsert_node(namespace, ent_node)
+
+            # Edge: Document -> Entity (MENTIONS)
+            edge = GraphEdge(
+                edge_id=f"DOC:{doc_id}->{ent_id}",
+                source_id=f"DOC:{doc_id}",
+                target_id=ent_id,
+                edge_type=EdgeType.CONTAINS, # Or MENTIONS if added to EdgeType
+                weight=float(ent["confidence"]),
+                properties={"relationship": "mentions"}
             )
+            await self._graph_db.upsert_edge(namespace, edge)
 
         # 4. RELATIONSHIP EXTRACTION (Optional)
-        # For small docs or critical segments, call LLM to find relationships
-        # For Phase 3, we'll demonstrate it on the first 5 blocks to avoid over-calling LLM.
         for b in blocks[:5]:
-            # Each block also has local entities that might not be in the global set
             block_entities = [e for e in resolved_entities if e["canonical_name"] in [v.canonical_name for v in b.entity_candidates]]
             
             rels = await self._rel_extractor.extract_from_block(b, block_entities, context.llm_func)
             for rel in rels:
                 src_name = rel.get("source", "").lower()
                 tgt_name = rel.get("target", "").lower()
-                rel_type = rel.get("type", "RELATED_TO").upper()
+                rel_type_str = rel.get("type", "RELATED_TO").upper()
                 
-                await self._graph_db.upsert_edge(
-                    namespace,
-                    f"ENT:{src_name}",
-                    f"ENT:{tgt_name}",
-                    rel_type,
-                    {"description": rel.get("description", ""), "source_doc": doc_id},
+                edge = GraphEdge(
+                    edge_id=f"ENT:{src_name}->ENT:{tgt_name}",
+                    source_id=f"ENT:{src_name}",
+                    target_id=f"ENT:{tgt_name}",
+                    edge_type=EdgeType.CONTAINS, # Default to CONTAINS if specific not in Enum
+                    properties={
+                        "rel_type": rel_type_str,
+                        "description": rel.get("description", ""),
+                        "source_doc": doc_id
+                    }
                 )
+                await self._graph_db.upsert_edge(namespace, edge)

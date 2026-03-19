@@ -113,29 +113,43 @@ class QueryOrchestrator:
         return "\n\n".join(sections)
 
     def _build_synthesis_prompt(self, query: str, context: str) -> str:
-        """Construct the final prompt for the LLM."""
+        """Construct the final prompt for the LLM with a focus on rich, cited answers."""
         return (
-            f"You are a helpful and accurate AI assistant for OpenRAG. "
-            f"Answer the user's question using ONLY the provided context blocks. "
-            f"If the context does not contain the answer, say that you don't know. "
-            f"Cite your sources using [number] notation corresponding to the context blocks.\n\n"
-            f"CONTEXT:\n{context}\n\n"
-            f"QUESTION: {query}\n\n"
-            f"ANSWER:"
+            "You are an expert Strategic Consultant and Lead Architect. "
+            "Your goal is to provide a masterfully synthesized, high-impact answer using ONLY the provided context blocks.\n\n"
+            "CRITICAL CONSTRAINTS:\n"
+            "1. BE RICH AND DETAILED: Do not provide brief summaries. Dig into the specifics found in the context (dates, numbers, technical stacks, names).\n"
+            "2. CITATIONS: You MUST cite every claim using [Number] format. Citing multiple sources for a point is encouraged, e.g., [1][3].\n"
+            "3. HIERARCHICAL STRUCTURE: Use bold headers, bullet points, and tables if the data permits to make the answer highly readable.\n"
+            "4. NO HALLUCINATION: If the information is missing, state 'The provided context does not mention [X]' and list what documents were searched ([1], [2], etc.).\n"
+            "5. PROFESSIONAL TONE: Write as if for a C-level executive or Lead Architect.\n\n"
+            "CONTEXT FROM DOCUMENTS:\n"
+            f"{context}\n\n"
+            f"USER QUERY: {query}\n\n"
+            "DETAILED STRATEGIC ANSWER:"
         )
 
     def _build_citations(self, hits: list[dict[str, Any]]) -> list[Citation]:
         """Convert hits into Citation models."""
         from openrag.models.content import BlockType
+        from pathlib import Path
         citations = []
         for hit in hits:
+            # Extract a user-friendly title from source_path
+            source_path = hit.get("source_path") or hit.get("file_path") or ""
+            title = hit.get("title") or ""
+            if not title and source_path:
+                title = Path(source_path).name  # e.g., "france.txt" or "core.py"
+            if not title:
+                title = "Unknown Document"
+            
             citations.append(Citation(
                 document_id=hit.get("document_id", ""),
-                document_title=hit.get("title") or hit.get("source_path", "Untitled"),
+                document_title=title,
                 page_number=hit.get("page_number"),
                 block_id=hit.get("block_id") or hit.get("id", ""),
                 block_type=hit.get("block_type") or BlockType.TEXT,
-                score=hit.get("rrf_score") or hit.get("rerank_score") or 0.0,
+                score=hit.get("rrf_score") or hit.get("rerank_score") or hit.get("score") or 0.0,
                 excerpt=hit.get("content") or hit.get("text", "")[:200]
             ))
         return citations

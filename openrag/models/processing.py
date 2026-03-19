@@ -109,6 +109,33 @@ class ProcessedBlock:
     """Text string that will be sent to the embedding model.
     Typically = description + any extracted OCR/table text."""
 
+    embedding: list[float] | None = None
+    """Dense vector representation of the block (populated by EmbeddingEngine)."""
+
+    @property
+    def document_id(self) -> str:
+        return self.source_block.document_id
+
+    @property
+    def block_id(self) -> str:
+        return self.source_block.block_id
+
+    @property
+    def block_type(self) -> BlockType:
+        return self.source_block.block_type
+
+    @property
+    def content(self) -> str:
+        return self.embedding_text
+
+    @property
+    def page_number(self) -> int | None:
+        return self.source_block.page_number
+
+    @property
+    def index(self) -> int:
+        return self.source_block.sequence_index
+
     entity_candidates: list[EntityCandidate] = field(default_factory=list)
     """Named entities tentatively extracted from description + context."""
 

@@ -69,6 +69,7 @@ class PlainCodeAdapter(BaseParserAdapter):
             # Fallback: whole file as one block
             blocks = [ContentBlock(
                 block_id=f"{document_id[:8]}-code-0",
+                document_id=document_id,
                 block_type=BlockType.CODE,
                 sequence_index=0,
                 raw_content=source_code,
@@ -112,6 +113,7 @@ class PlainCodeAdapter(BaseParserAdapter):
             kind = "class" if isinstance(node, ast.ClassDef) else "function"
             blocks.append(ContentBlock(
                 block_id=f"{document_id[:8]}-code-{seq}",
+                document_id=document_id,
                 block_type=BlockType.CODE,
                 sequence_index=seq,
                 raw_content=snippet,
@@ -154,6 +156,7 @@ class PlainCodeAdapter(BaseParserAdapter):
             snippet = "\n".join(lines[line_no: line_no + 60])
             blocks.append(ContentBlock(
                 block_id=f"{document_id[:8]}-code-{seq}",
+                document_id=document_id,
                 block_type=BlockType.CODE,
                 sequence_index=seq,
                 raw_content=snippet,

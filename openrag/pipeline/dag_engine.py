@@ -29,6 +29,24 @@ from openrag.models.processing import ProcessedBlock, ProcessingContext
 from openrag.processors.base import BaseModalityProcessor
 
 
+class _PatchedBlock:
+    """Lightweight proxy to override block_id for per-chunk ProcessedBlocks."""
+    def __init__(self, original: ContentBlock, block_id: str) -> None:
+        self._original = original
+        self._block_id = block_id
+
+    def __getattr__(self, name: str):
+        return getattr(self._original, name)
+
+    @property
+    def block_id(self) -> str:
+        return self._block_id
+
+    @property
+    def document_id(self) -> str:
+        return self._original.document_id
+
+
 class CyclicDependencyError(ValueError):
     """Raised when the pipeline DAG contains a cycle."""
 
@@ -119,8 +137,44 @@ class DAGPipelineEngine:
 
         tasks = [stage.processor.process(block, context) for block in blocks_to_process]
         gathered = await asyncio.gather(*tasks)
-        results: list[ProcessedBlock] = list(gathered)
-        return list(results)
+        
+        # Explode multi-chunk results — processors may store all chunks in
+        # structured_data["chunks"] but only return the first block.
+        # We expand them here so all chunks get embedded and indexed.
+        results: list[ProcessedBlock] = []
+        for primary_block in gathered:
+            if primary_block is None:
+                continue
+            chunks = None
+            if primary_block.structured_data and isinstance(primary_block.structured_data, dict):
+                chunks = primary_block.structured_data.get("chunks")
+            
+            if chunks and len(chunks) > 1:
+                # Create one ProcessedBlock per chunk
+                for i, chunk_text in enumerate(chunks):
+                    if not chunk_text.strip():
+                        continue
+                    # Create distinct block IDs for each chunk
+                    from openrag.models.processing import ProcessedBlock as PB
+                    chunk_block = PB(
+                        source_block=primary_block.source_block,
+                        natural_language_description=chunk_text,
+                        embedding_text=chunk_text,
+                        entity_candidates=[],
+                        structured_data={"chunk_index": i, "total_chunks": len(chunks)},
+                        confidence_score=primary_block.confidence_score,
+                    )
+                    # Give each chunk a unique block_id by monkey-patching source_block temporarily
+                    # We override block_id via a wrapper approach
+                    chunk_block.source_block = _PatchedBlock(
+                        primary_block.source_block,
+                        block_id=f"{primary_block.block_id}-c{i}"
+                    )
+                    results.append(chunk_block)
+            else:
+                results.append(primary_block)
+        
+        return results
 
     @staticmethod
     def _topological_sort(stages: list[PipelineStage]) -> list[list[str]]:

@@ -65,6 +65,7 @@ class TestContentBlock:
     def test_minimal_creation(self) -> None:
         block = ContentBlock(
             block_id="abc123",
+            document_id="abc123doc",
             block_type=BlockType.TEXT,
             sequence_index=0,
             raw_content="Hello world",
@@ -77,6 +78,7 @@ class TestContentBlock:
         bb = BoundingBox(0, 0, 100, 100, page=1)
         block = ContentBlock(
             block_id="img001",
+            document_id="doc001",
             block_type=BlockType.IMAGE,
             sequence_index=3,
             raw_content=b"\xff\xd8\xff",
@@ -93,9 +95,9 @@ class TestContentBlock:
 class TestContentPayload:
     def _make_payload(self) -> ContentPayload:
         blocks = [
-            ContentBlock("b0", BlockType.TEXT, 0, "Text content"),
-            ContentBlock("b1", BlockType.IMAGE, 1, b"img"),
-            ContentBlock("b2", BlockType.TEXT, 2, "More text"),
+            ContentBlock("b0", "doc1", BlockType.TEXT, 0, "Text content"),
+            ContentBlock("b1", "doc1", BlockType.IMAGE, 1, b"img"),
+            ContentBlock("b2", "doc1", BlockType.TEXT, 2, "More text"),
         ]
         return ContentPayload(
             document_id="sha256abc",
@@ -243,6 +245,7 @@ class TestProcessedBlock:
     def _make_source_block(self) -> ContentBlock:
         return ContentBlock(
             block_id="blk0",
+            document_id="doc1",
             block_type=BlockType.TEXT,
             sequence_index=0,
             raw_content="Some text",

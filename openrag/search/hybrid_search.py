@@ -78,6 +78,11 @@ class HybridSearcher:
             # 3. BM25 Search
             tg.start_soon(self._fetch_bm25, query, namespace, top_k * 2, results_bm25)
 
+        # DEBUG: print hit counts
+        print(f"DEBUG: Vector hits: {len(results_vector)}")
+        print(f"DEBUG: Graph hits: {len(results_graph)}")
+        print(f"DEBUG: BM25 hits: {len(results_bm25)}")
+
         # 4. Fusion (RRF)
         fused = self.reciprocal_rank_fusion(
             [results_vector, results_graph, results_bm25],
@@ -91,7 +96,21 @@ class HybridSearcher:
     ) -> None:
         """Call vector DB for semantic results."""
         vector = await self._embedding_engine.embed_query(query)
-        hits = await self._vector_db.search(vector, namespace, limit=limit)
+        if vector is None:
+            return
+        search_results = await self._vector_db.query(namespace, vector, top_k=limit)
+        
+        hits = []
+        for res in search_results:
+            hit = {
+                "id": res.id,
+                "score": float(res.score),
+                "mode": "vector",
+                "namespace": namespace
+            }
+            if res.payload:
+                hit.update(res.payload)
+            hits.append(hit)
         out.extend(hits)
 
     async def _fetch_graph(

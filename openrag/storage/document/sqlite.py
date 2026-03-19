@@ -58,7 +58,7 @@ class SQLiteDocumentAdapter(BaseDocumentAdapter):
                 Falls back to ``./openrag_store.db`` if config is None.
     """
 
-    def __init__(self, config: object = None) -> None:
+    def __init__(self, config: object = None, **kwargs: Any) -> None:
         raw_url: str = "sqlite+aiosqlite:///./openrag_store.db"
         if config is not None and hasattr(config, "url"):
             raw_url = config.url
@@ -152,6 +152,8 @@ class SQLiteDocumentAdapter(BaseDocumentAdapter):
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_dict(r) for r in rows]
+
+    async def close(self) -> None: pass
 
     async def delete_document(self, document_id: str, namespace: str) -> None:
         """Delete a document and all its BM25 tokens."""

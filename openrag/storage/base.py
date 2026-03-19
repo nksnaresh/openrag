@@ -66,6 +66,10 @@ class BaseVectorDBAdapter(ABC):
     async def count(self, namespace: str) -> int:
         """Return total number of vectors in the namespace."""
 
+    @abstractmethod
+    async def close(self) -> None:
+        """Close connection to the vector DB."""
+
     async def health_check(self) -> bool:
         """Return True if the adapter can reach its backend."""
         try:
@@ -85,11 +89,11 @@ class BaseGraphDBAdapter(ABC):
         """Create schema / constraints. Called once on startup."""
 
     @abstractmethod
-    async def upsert_node(self, node: GraphNode) -> None:
+    async def upsert_node(self, namespace: str, node: GraphNode) -> None:
         """Insert or update a graph node."""
 
     @abstractmethod
-    async def upsert_edge(self, edge: GraphEdge) -> None:
+    async def upsert_edge(self, namespace: str, edge: GraphEdge) -> None:
         """Insert or update a directed graph edge."""
 
     @abstractmethod
@@ -117,8 +121,18 @@ class BaseGraphDBAdapter(ABC):
         """Search for nodes matching the given criteria."""
 
     @abstractmethod
+    async def search_context(
+        self, query: str, namespace: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Search for entity nodes relevant to the query to provide context."""
+
+    @abstractmethod
     async def delete_node(self, node_id: str) -> None:
         """Delete a node and all its incident edges."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close connection to the graph DB."""
 
     async def health_check(self) -> bool:
         try:
@@ -185,6 +199,10 @@ class BaseDocumentAdapter(ABC):
         self, session_id: str
     ) -> list[dict[str, str]]:
         """Retrieve all turns for a session."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close connection to the document store."""
 
     async def health_check(self) -> bool:
         try:
