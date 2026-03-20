@@ -21,7 +21,9 @@ OpenRAG is a production-ready knowledge intelligence framework designed for buil
 | Enterprise UI | ✅ Query Studio + Live Observability Hub |
 | Security & RBAC | ✅ JWT + Admin/Viewer Roles + Secured Credentials |
 | Automated Governance | ✅ CodeQL Scanning + Secret Push Protection |
-| Observability | ✅ OTel Tracing + Prometheus Metrics + Log Streaming |
+| OpenTelemetry tracing | ✅ Native OTel Integration |
+| Prometheus metrics | ✅ Live System Telemetry |
+| Log Streaming | ✅ Real-time Terminal Hub |
 | Multi-tenancy + ACLs | ✅ Namespace isolation, per-doc ACLs |
 | Streaming responses | ✅ SSE + WebSocket |
 | Structured output | ✅ JSON schema-constrained answers |
