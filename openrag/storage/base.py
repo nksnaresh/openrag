@@ -62,6 +62,10 @@ class BaseVectorDBAdapter(ABC):
     async def delete(self, namespace: str, ids: list[str]) -> None:
         """Delete records by ID."""
 
+    async def get_payload(self, namespace: str, record_id: str) -> dict[str, Any] | None:
+        """Fetch payload metadata by exact record ID."""
+        return None
+
     @abstractmethod
     async def count(self, namespace: str) -> int:
         """Return total number of vectors in the namespace."""

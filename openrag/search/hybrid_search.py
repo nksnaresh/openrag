@@ -127,6 +127,14 @@ class HybridSearcher:
     ) -> None:
         """Lexical search using stored tokens."""
         hits = await self._bm25_retriever.search(query, namespace, limit=limit)
+        
+        # Hydrate missing BM25 payloads using direct vector storage lookup
+        for hit in hits:
+            if hasattr(self._vector_db, "get_payload"):
+                payload = await self._vector_db.get_payload(namespace, hit["id"])
+                if payload:
+                    hit.update(payload)
+                    
         out.extend(hits)
 
     def reciprocal_rank_fusion(

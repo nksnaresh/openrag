@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 from pathlib import Path
+import json
 
 # --- Page Config ---
 st.set_page_config(
@@ -47,6 +48,23 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1);
         text-align: center;
     }
+    .terminal-window {
+        background-color: #1a1b26;
+        color: #7aa2f7;
+        font-family: 'Courier New', Courier, monospace;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 5px solid #414868;
+        height: 400px;
+        overflow-y: auto;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+    .terminal-line { margin-bottom: 2px; }
+    .terminal-info { color: #bb9af7; }
+    .terminal-success { color: #9ece6a; }
+    .terminal-error { color: #f7768e; }
+    .terminal-debug { color: #565f89; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,6 +77,8 @@ if "show_telemetry" not in st.session_state:
     st.session_state.show_telemetry = True
 if "last_telemetry" not in st.session_state:
     st.session_state.last_telemetry = None
+if "terminal_logs" not in st.session_state:
+    st.session_state.terminal_logs = []
 
 # --- Sidebar ---
 with st.sidebar:
@@ -73,25 +93,31 @@ with st.sidebar:
     )
     
     if st.button("🚀 Ingest Files") and uploaded_files:
-        with st.spinner("Ingesting..."):
-            for uploaded_file in uploaded_files:
-                files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-                try:
-                    res = requests.post(f"{st.session_state.api_url}/ingest", files=files)
-                    if res.status_code == 200:
-                        data = res.json()
-                        st.success(f"Ingested {uploaded_file.name}")
-                        st.session_state.last_telemetry = {
-                            "type": "Ingestion",
-                            "file": uploaded_file.name,
-                            "status": data.get("status"),
-                            "block_count": data.get("block_count"),
-                            "raw": data
-                        }
-                    else:
-                        st.error(f"Failed to ingest {uploaded_file.name}: {res.text}")
-                except Exception as e:
-                    st.error(f"Error connecting to API: {e}")
+        st.session_state.terminal_logs = ["> STARTING BATCH INGESTION..."]
+        for uploaded_file in uploaded_files:
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+            try:
+                res = requests.post(f"{st.session_state.api_url}/ingest/stream", files=files, stream=True)
+                for line in res.iter_lines():
+                    if line:
+                        decoded = line.decode('utf-8')
+                        if decoded.startswith("RESULT:"):
+                            data = json.loads(decoded[7:])
+                            st.session_state.last_telemetry = {
+                                "type": "Ingestion",
+                                "file": uploaded_file.name,
+                                "status": data.get("status"),
+                                "block_count": data.get("block_count"),
+                                "raw": data
+                            }
+                        else:
+                            st.session_state.terminal_logs.append(decoded)
+                            # Force update if visible
+                            if st.session_state.show_telemetry:
+                                st.rerun()
+                st.success(f"Ingested {uploaded_file.name}")
+            except Exception as e:
+                st.error(f"Error connecting to API: {e}")
     
     st.markdown("---")
     st.subheader("🖥️ UI Settings")
@@ -154,9 +180,12 @@ with tab_chat:
                         """, unsafe_allow_html=True)
 
     # Chat Input
+    # Chat Input
     if prompt := st.chat_input("Ask a question about your documents..."):
         # Add user message to chat
         st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.terminal_logs = [f"> QUERY: {prompt}"]
+        
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -168,17 +197,33 @@ with tab_chat:
             
             try:
                 res = requests.post(
-                    f"{st.session_state.api_url}/query", 
-                    json={"text": prompt, "namespace": "default"}
+                    f"{st.session_state.api_url}/query/stream", 
+                    json={"text": prompt, "namespace": "default"},
+                    stream=True
                 )
                 
-                if res.status_code == 200:
-                    data = res.json()
-                    full_response = data["answer"]
-                    citations = data["citations"]
-                    
+                for line in res.iter_lines():
+                    if line:
+                        decoded = line.decode('utf-8')
+                        if decoded.startswith("RESULT:"):
+                            data = json.loads(decoded[7:])
+                            full_response = data["answer"]
+                            citations = data["citations"]
+                            
+                            st.session_state.last_telemetry = {
+                                "type": "Query",
+                                "text": prompt,
+                                "latency_ms": data.get("latency_ms"),
+                                "citations_count": len(citations),
+                                "raw": data
+                            }
+                        else:
+                            st.session_state.terminal_logs.append(decoded)
+                            # We can't easily rerun here without breaking the loop 
+                            # but we can try to update the terminal_placeholder if we had one
+                
+                if full_response:
                     message_placeholder.markdown(full_response)
-                    
                     if citations:
                         with st.expander("References"):
                             for cit in citations:
@@ -194,16 +239,8 @@ with tab_chat:
                         "content": full_response,
                         "citations": citations
                     })
-                    
-                    st.session_state.last_telemetry = {
-                        "type": "Query",
-                        "text": prompt,
-                        "latency_ms": data.get("latency_ms"),
-                        "citations_count": len(citations),
-                        "raw": data
-                    }
-                else:
-                    st.error(f"API Error: {res.status_code} - {res.text}")
+                # Final rerun to update everything
+                st.rerun()
             except Exception as e:
                 st.error(f"Error connecting to API: {e}")
 
@@ -267,34 +304,33 @@ with tab_obs:
         else:
             st.info("No OTLP collector configured. Spans are being generated but not exported externally.")
 
-# --- Telemetry Panel (Right Side) ---
+# --- Telemetry Panel (Terminal Side) ---
 if tel_col:
     with tel_col:
-        st.subheader("📡 Real-time Telemetry")
+        st.subheader("📟 System Console")
+        # Terminal-style log box
+        log_html = "".join([f'<div class="terminal-line">{line}</div>' for line in st.session_state.terminal_logs])
+        st.markdown(f"""
+        <div class="terminal-window">
+            {log_html}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🗑️ Clear Console"):
+            st.session_state.terminal_logs = []
+            st.session_state.last_telemetry = None
+            st.rerun()
+
+        st.markdown("---")
+        st.subheader("📡 Extraction Details")
         if not st.session_state.last_telemetry:
-            st.info("No recent actions. Ingest a file or ask a question to see telemetry.")
+            st.info("No active extraction data.")
         else:
             tel = st.session_state.last_telemetry
-            st.markdown(f"**Current Action**: `{tel['type']}`")
-            
-            if tel["type"] == "Ingestion":
-                st.write(f"📄 **File**: `{tel['file']}`")
-                st.write(f"✅ **Status**: `{tel['status']}`")
-                st.write(f"🧩 **Blocks**: `{tel['block_count']}`")
-            
-            elif tel["type"] == "Query":
+            if tel["type"] == "Query":
                 st.write(f"⏱️ **Latency**: `{tel['latency_ms']:.2f}ms`")
-                st.write(f"📚 **Citations**: `{tel['citations_count']}`")
-                
                 if tel.get("raw") and "citations" in tel["raw"]:
-                    with st.expander("Extraction Details"):
-                        for i, cit in enumerate(tel["raw"]["citations"]):
-                            st.markdown(f"**[{i+1}] {cit['source_path']}**")
-                            st.caption(f"Score: {cit['score']:.4f} | Type: {cit['block_type']}")
-            
-            with st.expander("🔍 Raw JSON"):
-                st.json(tel["raw"])
-            
-            if st.button("🗑️ Clear Telemetry"):
-                st.session_state.last_telemetry = None
-                st.rerun()
+                    for i, cit in enumerate(tel["raw"]["citations"][:5]):
+                        st.caption(f"[{i+1}] {cit['source_path']} (Score: {cit['score']:.4f})")
+            elif tel["type"] == "Ingestion":
+                st.write(f"🧩 **Blocks**: `{tel['block_count']}`")

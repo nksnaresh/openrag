@@ -47,9 +47,9 @@ async def lifespan(app: FastAPI):
         working_dir=working_dir
     )
 
-    # Configure real Gemini providers — use NPZ vector DB for persistence
-    config.embedding.provider = "gemini"
-    config.embedding.model = "models/gemini-embedding-001"
+    # Configure open source offline embedding providers — use NPZ vector DB for persistence
+    config.embedding.provider = "huggingface"
+    config.embedding.model = "BAAI/bge-base-en-v1.5"
     config.embedding.dimensions = 768
     config.llm.provider = "gemini"
     config.llm.model = "gemini-flash-latest"
@@ -59,10 +59,10 @@ async def lifespan(app: FastAPI):
     # Ensure Doc Store is inside working_dir
     config.document_store.url = f"sqlite+aiosqlite:///{db_path}"
 
-    # ── Cache the Gemini embedding adapter at startup (not per-call) ──────────
-    _emb_adapter = AdapterRegistry.get_embedding("gemini")(config.embedding)
+    # ── Cache the HuggingFace embedding adapter at startup (not per-call) ──────────
+    _emb_adapter = AdapterRegistry.get_embedding(config.embedding.provider)(config.embedding)
 
-    async def gemini_emb_func(texts: list[str]) -> list[list[float]]:
+    async def hf_emb_func(texts: list[str]) -> list[list[float]]:
         vectors = await _emb_adapter.embed(texts)
         return [v.tolist() for v in vectors]
 
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
     # 2. Initialize
     rag = OpenRAG(
         config,
-        embedding_func=gemini_emb_func,
+        embedding_func=hf_emb_func,
         llm_func=gemini_llm_func,
         vlm_func=gemini_vlm_func,
     )
@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
     global rag_instance
     rag_instance = rag
 
-    print(f"INFO: OpenRAG initialized (NPZ vector DB at {working_dir}/vectors/, Gemini AI)")
+    print(f"INFO: OpenRAG initialized (NPZ vector DB at {working_dir}/vectors/, Offline HuggingFace Embeddings, Gemini LLM)")
 
     yield
 
@@ -126,6 +126,10 @@ app = FastAPI(title="OpenRAG API", lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
 
 app.include_router(router, prefix="/api/v1")
+
+print("DEBUG: Registered Routes:")
+for route in app.routes:
+    print(f"  {route.path} [{route.methods if hasattr(route, 'methods') else 'N/A'}]")
 
 if __name__ == "__main__":
     import uvicorn

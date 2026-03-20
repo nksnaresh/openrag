@@ -7,6 +7,7 @@ Synthesis (LLM).
 from __future__ import annotations
 
 import anyio
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from openrag.models.query import QueryResponse, Citation
@@ -50,8 +51,20 @@ class QueryOrchestrator:
         self._query_processor = query_processor
         self._llm_func = llm_func
 
-    async def execute(self, request: QueryRequest) -> QueryResponse:
+    async def execute(
+        self, 
+        request: QueryRequest,
+        on_progress: Callable[[str], Any] | None = None,
+    ) -> QueryResponse:
         """Execute a full RAG query flow."""
+        async def _log(msg: str):
+            if on_progress:
+                if asyncio.iscoroutinefunction(on_progress):
+                    await on_progress(msg)
+                else:
+                    on_progress(msg)
+
+        await _log(f"[INFO] Starting query: '{request.text[:50]}...'")
         start_time = time.time()
         with tracer.start_as_current_span("query.execute") as span:
             span.set_attribute("openrag.namespace", request.namespace)
@@ -66,17 +79,20 @@ class QueryOrchestrator:
         # 1. Query Processing (Expansion/HyDE)
         search_queries = [request.text]
         if self._query_processor:
-            # For simplicity, we'll just use Multi-Query for now
+            await _log(f"[INFO] Expanding query using {type(self._query_processor).__name__}...")
             variations = await self._query_processor.generate_multi_queries(request.text)
             search_queries.extend(variations)
             # Deduplicate
             search_queries = list(dict.fromkeys(search_queries))
+            await _log(f"[DEBUG] Expanded to {len(search_queries)} search queries.")
 
         # 2. Hybrid Retrieval (Concurrent for all queries)
+        await _log(f"[INFO] Retrieving relevant blocks (Vector + BM25 + Graph)...")
         all_hits = []
         async with anyio.create_task_group() as tg:
             for q in search_queries:
                 tg.start_soon(self._collect_hits, q, request.namespace, request.top_k, all_hits)
+        await _log(f"[DEBUG] Retrieved {len(all_hits)} candidate blocks.")
 
         # 3. Fusion of multi-query results (RRF)
         # The hybrid_searcher already does RRF for one query. 
@@ -91,6 +107,7 @@ class QueryOrchestrator:
                 documents=fused_hits,
                 top_k=request.top_k
             )
+            await _log(f"[INFO] Reranking complete. Selected top {len(final_hits)} hits.")
 
         # 5. Synthesis (LLM)
         if not self._llm_func:
@@ -103,6 +120,7 @@ class QueryOrchestrator:
 
         context_text = self._build_context(final_hits)
         prompt = self._build_synthesis_prompt(request.text, context_text)
+        await _log(f"[INFO] Synthesizing answer via LLM...")
         answer = await self._llm_func(prompt)
 
         latency = (time.time() - start_time)

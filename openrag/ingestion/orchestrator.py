@@ -6,7 +6,8 @@ import traceback
 Wires together: deduplication → parser selection → DAG pipeline →
 document storage.
 """
-
+import time
+import asyncio
 from pathlib import Path
 
 import anyio
@@ -75,7 +76,16 @@ class IngestionOrchestrator:
         path: str | Path,
         metadata: IngestMetadata,
         acl: dict[str, list[str]] | None = None,
+        on_progress: Callable[[str], Any] | None = None,
     ) -> JobResult:
+        async def _log(msg: str):
+            if on_progress:
+                if asyncio.iscoroutinefunction(on_progress):
+                    await on_progress(msg)
+                else:
+                    on_progress(msg)
+
+        await _log(f"[INFO] Initializing ingestion for {path}...")
         start_time = time.time()
         path = Path(path)
         with tracer.start_as_current_span("ingest.file") as span:
@@ -83,8 +93,10 @@ class IngestionOrchestrator:
             span.set_attribute("openrag.namespace", metadata.namespace)
 
         # 1. Hash + dedup
+        await _log(f"[DEBUG] Computing file hash...")
         try:
             content_hash = await compute_file_hash(path)
+            await _log(f"[DEBUG] Hash: {content_hash}")
         except OSError as exc:
             return JobResult(
                 job_id="",
@@ -120,6 +132,7 @@ class IngestionOrchestrator:
                 document_id=content_hash,
                 reason=f"No parser registered for extension '{ext}'.",
             )
+        await _log(f"[INFO] Selecting parser for {ext}: {parser_cls.__name__}")
         parser = parser_cls()
 
         # 3. Parse
@@ -130,7 +143,16 @@ class IngestionOrchestrator:
             )
             from openrag.parsers.base import BaseParserAdapter  # noqa: PLC0415
             assert isinstance(parser, BaseParserAdapter)
+            await _log(f"[INFO] Parsing content...")
             payload: ContentPayload = await parser.parse(path, options)
+            
+            import os
+            try:
+                payload.metadata.file_size_bytes = os.path.getsize(path)
+            except Exception:
+                pass
+                
+            await _log(f"[DEBUG] Extracted {len(payload.blocks)} blocks.")
         except Exception as exc:  # noqa: BLE001
             return JobResult(
                 job_id=content_hash,
@@ -155,8 +177,10 @@ class IngestionOrchestrator:
         )
 
         # 5. DAG pipeline
+        await _log(f"[INFO] Executing modality processing pipeline...")
         try:
             processed_blocks = await self._dag_engine.execute(payload, context)
+            await _log(f"[DEBUG] Processing complete. {len(processed_blocks)} processed blocks.")
         except Exception as exc:  # noqa: BLE001
             return JobResult(
                 job_id=content_hash,
@@ -200,6 +224,7 @@ class IngestionOrchestrator:
                 # D. BM25 indexing
                 if self._bm25_indexer:
                     tg.start_soon(self._bm25_indexer.index_blocks, processed_blocks, metadata.namespace)
+            await _log(f"[SUCCESS] Parallel indexing completed.")
 
         except Exception as exc:  # noqa: BLE001
             return JobResult(

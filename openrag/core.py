@@ -127,20 +127,18 @@ class OpenRAG:
     async def ingest(
         self,
         path: str | Path,
-        namespace: str | None = None,
-        tags: list[str] | None = None,
+        metadata: IngestMetadata | None = None,
         acl: dict[str, list[str]] | None = None,
+        on_progress: Callable[[str], Any] | None = None,
     ) -> JobResult:
-        """Ingest a single file or URL into the knowledge base."""
+        """Parse and ingest a file into the knowledge base."""
         self._require_initialized()
-
-        meta = IngestMetadata(
+        orchestrator = self._get_orchestrator()
+        metadata = metadata or IngestMetadata(
             tenant_id=self.config.tenant_id,
-            namespace=namespace or self.config.namespace,
-            tags=tags or [],
+            namespace=self.config.namespace
         )
-        orch = self._get_orchestrator()
-        return await orch.ingest_file(str(path), meta, acl=acl)  # type: ignore[no-any-return]
+        return await orchestrator.ingest_file(path, metadata, acl, on_progress=on_progress)
 
     async def ingest_folder(
         self,
@@ -170,6 +168,7 @@ class OpenRAG:
         top_k: int = 20,
         output_schema: dict[str, Any] | None = None,
         session_id: str | None = None,
+        on_progress: Callable[[str], Any] | None = None,
     ) -> QueryResponse:
         """Execute a query and return the synthesised answer with citations."""
         self._require_initialized()
@@ -182,7 +181,7 @@ class OpenRAG:
             session_id=session_id,
         )
         engine = self._get_query_engine()
-        return await engine.execute(request)  # type: ignore[no-any-return]
+        return await engine.execute(request, on_progress=on_progress)  # type: ignore[no-any-return]
 
     async def stream_query(
         self,

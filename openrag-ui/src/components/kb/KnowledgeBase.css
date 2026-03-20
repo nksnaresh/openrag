@@ -1,0 +1,115 @@
+.kb-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+.text-danger {
+  color: var(--danger-color);
+}
+.text-xs {
+  font-size: 0.75rem;
+}
+.mt-4 { margin-top: 1rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mb-4 { margin-bottom: 1rem; }
+.font-medium { font-weight: 500; }
+
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  border: 2px dashed var(--border-color);
+  background: var(--bg-color);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.upload-zone:hover, .upload-zone.dragging {
+  border-color: var(--primary-color);
+  background: rgba(79, 70, 229, 0.05);
+}
+
+.upload-icon {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.kb-search-input {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-color);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.kb-search-input:focus {
+  border-color: var(--primary-color);
+}
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.docs-table th {
+  text-align: left;
+  padding: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--border-color-light);
+}
+
+.docs-table td {
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid var(--border-color-light);
+  font-size: 0.875rem;
+}
+
+.docs-table tr:hover td {
+  background-color: var(--bg-color);
+}
+
+.badge {
+  display: inline-flex;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-outline {
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+}
+
+.badge-completed {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+}
+
+.badge-failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+.badge-processing {
+  background: rgba(79, 70, 229, 0.1);
+  color: var(--primary-color);
+}
+
+.action-btn {
+  padding: 0.4rem;
+}
+
+.action-btn.danger:hover {
+  color: var(--danger-color);
+  background: rgba(239, 68, 68, 0.1);
+}

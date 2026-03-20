@@ -114,9 +114,9 @@ class ContextConfig(BaseSettings):
 
 
 class EmbeddingConfig(BaseSettings):
-    provider: str = "openai"
-    model: str = "text-embedding-3-large"
-    dimensions: int = 3072
+    provider: str = "huggingface"
+    model: str = "BAAI/bge-base-en-v1.5"
+    dimensions: int = 768
     batch_size: int = 100
     cache_backend: Literal["in_memory", "redis", "sqlite"] = "in_memory"
     cache_url: str | None = None

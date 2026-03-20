@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import time
 from typing import TYPE_CHECKING
 import numpy as np
 
@@ -41,13 +42,28 @@ class GeminiEmbeddingAdapter(BaseEmbeddingAdapter):
         
         # genai.embed_content is blocking, so we run it in a thread
         def _get_embeddings():
-            result = genai.embed_content(
-                model=self.model_name,
-                content=texts,
-                task_type="retrieval_document"
-            )
-            return [np.array(e) for e in result["embedding"]]
+            max_retries = 5
+            base_delay = 2.0
             
+            for attempt in range(max_retries):
+                try:
+                    result = genai.embed_content(
+                        model=self.model_name,
+                        content=texts,
+                        task_type="retrieval_document"
+                    )
+                    return [np.array(e) for e in result["embedding"]]
+                except Exception as e:
+                    if "429" in str(e) or "quota" in str(e).lower() or "exhausted" in str(e).lower():
+                        if attempt == max_retries - 1:
+                            raise
+                        time.sleep(base_delay * (2 ** attempt))
+                    else:
+                        raise
+            return []
+            
+        # Add a tiny base spacing to prevent immediate overwhelming
+        await asyncio.sleep(0.5)
         return await asyncio.to_thread(_get_embeddings)
 
     def dimension(self) -> int:

@@ -115,6 +115,15 @@ class NPZVectorAdapter(BaseVectorDBAdapter):
         with self._lock:
             return len(self._store.get(namespace, {}))
 
+    async def get_payload(self, namespace: str, record_id: str) -> dict[str, Any] | None:
+        """Fetch payload metadata by exact record ID."""
+        with self._lock:
+            ns = self._store.get(namespace, {})
+            record = ns.get(record_id)
+            if record:
+                return record.payload
+            return None
+
     async def clear_namespace(self, namespace: str) -> None:
         """Remove all records in a namespace."""
         with self._lock:
