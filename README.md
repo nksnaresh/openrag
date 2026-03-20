@@ -4,27 +4,26 @@
 >
 > Multimodal RAG with a built-in API server, declarative YAML pipelines, and enterprise-grade access control.
 
-[![CI](https://github.com/your-org/openrag/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/openrag/actions)
-[![PyPI](https://img.shields.io/pypi/v/openrag)](https://pypi.org/project/openrag/)
+[![CI](https://github.com/nksnaresh/openrag/actions/workflows/codeql.yml/badge.svg)](https://github.com/nksnaresh/openrag/actions)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
-[![Python](https://img.shields.io/pypi/pyversions/openrag)](https://pypi.org/project/openrag/)
+[![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
 
 ---
 
 ## What is OpenRAG?
 
-OpenRAG is a full-stack knowledge intelligence framework that enables teams to build, operate, and query rich multimodal knowledge bases at scale. Unlike library-only RAG tools, OpenRAG ships as a **complete platform**:
+OpenRAG is a production-ready knowledge intelligence framework designed for building, operating, and observing multimodal RAG systems at scale. More than a library, it is a **complete platform** providing:
 
 | Feature | OpenRAG |
 |---|---|
 | Native modalities | Text, Image, Table, Equation, Code, Audio/Video |
-| Built-in API server | ✅ REST + GraphQL + WebSocket |
-| Declarative pipelines | ✅ YAML-first configuration |
-| Multi-tenancy + ACLs | ✅ Namespace isolation, per-doc ACLs |
-| Streaming responses | ✅ SSE + WebSocket |
+| Built-in API server | ✅ Fast API + WebSocket |
+| Enterprise UI | ✅ Query Studio + Observability Dashboard |
+| Security | ✅ JWT + RBAC (Admin/Viewer) + Hashed Credentials |
+| Automated Defense | ✅ CodeQL Scanning + Secret Push Protection |
+| Observability | ✅ Live Prometheus Metrics + Terminal Log Streaming |
+| Multi-tenancy | ✅ Namespace isolation, per-doc ACLs |
 | Structured output | ✅ JSON schema-constrained answers |
-| OpenTelemetry tracing | ✅ |
-| Prometheus metrics | ✅ |
 | Pluggable storage | 5 vector DBs · 3 graph DBs · 3 doc stores |
 | License | Apache 2.0 |
 
