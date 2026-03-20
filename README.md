@@ -17,12 +17,13 @@ OpenRAG is a production-ready knowledge intelligence framework designed for buil
 | Feature | OpenRAG |
 |---|---|
 | Native modalities | Text, Image, Table, Equation, Code, Audio/Video |
-| Built-in API server | ✅ Fast API + WebSocket |
-| Enterprise UI | ✅ Query Studio + Observability Dashboard |
-| Security | ✅ JWT + RBAC (Admin/Viewer) + Hashed Credentials |
-| Automated Defense | ✅ CodeQL Scanning + Secret Push Protection |
-| Observability | ✅ Live Prometheus Metrics + Terminal Log Streaming |
-| Multi-tenancy | ✅ Namespace isolation, per-doc ACLs |
+| Built-in API server | ✅ REST + GraphQL + WebSocket (FastAPI) |
+| Enterprise UI | ✅ Query Studio + Live Observability Hub |
+| Security & RBAC | ✅ JWT + Admin/Viewer Roles + Secured Credentials |
+| Automated Governance | ✅ CodeQL Scanning + Secret Push Protection |
+| Observability | ✅ OTel Tracing + Prometheus Metrics + Log Streaming |
+| Multi-tenancy + ACLs | ✅ Namespace isolation, per-doc ACLs |
+| Streaming responses | ✅ SSE + WebSocket |
 | Structured output | ✅ JSON schema-constrained answers |
 | Pluggable storage | 5 vector DBs · 3 graph DBs · 3 doc stores |
 | License | Apache 2.0 |
