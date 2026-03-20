@@ -4,8 +4,14 @@ import time
 import os
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request, Response
-from typing import List
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request, Response, status
+from fastapi.security import OAuth2PasswordRequestForm
+from typing import List, Optional
+from datetime import timedelta
+from openrag.api.auth import (
+    Token, User, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, 
+    FAKE_USERS_DB, verify_password, get_current_user, check_admin_role
+)
 
 from openrag.core import OpenRAG
 from openrag.api.models import QueryRequest, QueryResponse, IngestResponse, Citation
@@ -24,12 +30,27 @@ def get_rag(request: Request):
     return rag
 
 @router.get("/metrics")
-async def get_metrics():
+async def get_metrics(current_user: User = Depends(check_admin_role)):
     """Endpoint for Prometheus scraping."""
     return Response(content=MetricsManager.get_latest(), media_type=MetricsManager.content_type())
 
+@router.post("/auth/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user_dict = FAKE_USERS_DB.get(form_data.username)
+    if not user_dict or not verify_password(form_data.password, user_dict["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user_dict["username"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @router.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest, rag: OpenRAG = Depends(get_rag)):
+async def query(request: QueryRequest, rag: OpenRAG = Depends(get_rag), current_user: User = Depends(get_current_user)):
     start_time = time.time()
     print(f"DEBUG: API Querying: {request.text}")
     try:
@@ -66,7 +87,7 @@ async def query(request: QueryRequest, rag: OpenRAG = Depends(get_rag)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/query/stream")
-async def query_stream(request: QueryRequest, rag: OpenRAG = Depends(get_rag)):
+async def query_stream(request: QueryRequest, rag: OpenRAG = Depends(get_rag), current_user: User = Depends(get_current_user)):
     async def event_generator():
         queue = asyncio.Queue()
         
@@ -112,7 +133,7 @@ async def query_stream(request: QueryRequest, rag: OpenRAG = Depends(get_rag)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.post("/ingest", response_model=IngestResponse)
-async def ingest_file(file: UploadFile = File(...), rag: OpenRAG = Depends(get_rag)):
+async def ingest_file(file: UploadFile = File(...), rag: OpenRAG = Depends(get_rag), current_user: User = Depends(check_admin_role)):
     start_time = time.time()
     print(f"DEBUG: API Ingesting {file.filename}")
     try:
@@ -151,7 +172,7 @@ async def ingest_file(file: UploadFile = File(...), rag: OpenRAG = Depends(get_r
             file_path.unlink()
 
 @router.post("/ingest/stream")
-async def ingest_stream(file: UploadFile = File(...), rag: OpenRAG = Depends(get_rag)):
+async def ingest_stream(file: UploadFile = File(...), rag: OpenRAG = Depends(get_rag), current_user: User = Depends(check_admin_role)):
     # Save to temp file first
     temp_dir = Path("temp_uploads").absolute()
     temp_dir.mkdir(exist_ok=True)
@@ -191,7 +212,7 @@ async def ingest_stream(file: UploadFile = File(...), rag: OpenRAG = Depends(get
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.get("/documents")
-async def get_documents(namespace: str = "default", limit: int = 100, rag: OpenRAG = Depends(get_rag)):
+async def get_documents(namespace: str = "default", limit: int = 100, rag: OpenRAG = Depends(get_rag), current_user: User = Depends(get_current_user)):
     if hasattr(rag, "_core_components"):
         # Access from components dict or registry
         # Let's cleanly reach into the initialized state
@@ -227,7 +248,7 @@ async def get_documents(namespace: str = "default", limit: int = 100, rag: OpenR
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/documents/{document_id}")
-async def delete_document(document_id: str, namespace: str = "default", rag: OpenRAG = Depends(get_rag)):
+async def delete_document(document_id: str, namespace: str = "default", rag: OpenRAG = Depends(get_rag), current_user: User = Depends(check_admin_role)):
     try:
         orch = rag._get_orchestrator()
         await orch._doc_store.delete_document(document_id, namespace)
@@ -240,7 +261,7 @@ async def health():
     return {"status": "ok"}
 
 @router.get("/observability/logs")
-async def get_system_logs(limit: int = 50):
+async def get_system_logs(limit: int = 50, current_user: User = Depends(check_admin_role)):
     log_file = Path("/tmp/openrag_server.log")
     if not log_file.exists():
         return {"logs": ["[INFO] System log file not found."]}
@@ -249,7 +270,7 @@ async def get_system_logs(limit: int = 50):
         return {"logs": [line.strip() for line in lines[-limit:] if line.strip()]}
 
 @router.delete("/observability/logs")
-async def clear_system_logs():
+async def clear_system_logs(current_user: User = Depends(check_admin_role)):
     log_file = Path("/tmp/openrag_server.log")
     if log_file.exists():
         log_file.open("w").close()

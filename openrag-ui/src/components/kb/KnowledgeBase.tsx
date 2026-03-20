@@ -2,27 +2,33 @@ import { useState, useRef } from 'react';
 import { UploadCloud, FileText, Trash2, RefreshCw } from 'lucide-react';
 import './KnowledgeBase.css';
 
+export interface DocumentRecord {
+  id: string;
+  name: string;
+  type: string;
+  size: string;
+  status: string;
+  reason?: string;
+  file?: File;
+}
+
 interface Props {
-  documents: {
-    id: string;
-    name: string;
-    type: string;
-    size: string;
-    status: string;
-    reason?: string;
-    file?: File;
-  }[];
+  documents: DocumentRecord[];
   onUpload: (files: File[]) => void;
   onDelete: (id: string) => void;
   onDeleteMultiple: (ids: string[]) => void;
   onClearAll: () => void;
+  role?: string;
 }
 
-export function KnowledgeBase({ documents, onUpload, onDelete, onDeleteMultiple, onClearAll }: Props) {
+export function KnowledgeBase({ documents, onUpload, onDelete, onDeleteMultiple, onClearAll, role = 'viewer' }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isAdmin = role === 'admin';
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -92,17 +98,21 @@ export function KnowledgeBase({ documents, onUpload, onDelete, onDeleteMultiple,
           <h3>Indexed Documents</h3>
           <div className="flex gap-2 items-center"> {/* Added flex and items-center for alignment */}
             <div className="search-box">
-              <input type="text" placeholder="Search documents..." className="input" />
+              <input type="text" placeholder="Search documents..." className="input" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            {selectedIds.size > 0 && (
-              <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDeleteSelected}>
-                Delete Selected ({selectedIds.size})
-              </button>
-            )}
-            {documents.length > 0 && (
-              <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={onClearAll}>
-                Clear All
-              </button>
+            {isAdmin && (
+              <>
+                {selectedIds.size > 0 && (
+                  <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDeleteSelected}>
+                    Delete Selected ({selectedIds.size})
+                  </button>
+                )}
+                {documents.length > 0 && (
+                  <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={onClearAll}>
+                    Clear All
+                  </button>
+                )}
+              </>
             )}
             <button className="btn btn-ghost" onClick={handleRefreshClick}>
               <RefreshCw size={16} className={isRefreshing ? 'spinner' : ''} />
@@ -160,7 +170,7 @@ export function KnowledgeBase({ documents, onUpload, onDelete, onDeleteMultiple,
                     {doc.reason && <span className="text-xs text-danger mt-1">{doc.reason}</span>}
                   </div>
                 </td>
-                <td>
+                <td className="actions-cell">
                   <div className="flex actions gap-2">
                     <button 
                       className={`btn btn-ghost action-btn ${!doc.file ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -168,11 +178,13 @@ export function KnowledgeBase({ documents, onUpload, onDelete, onDeleteMultiple,
                       onClick={() => doc.file && onUpload([doc.file])}
                       disabled={!doc.file || doc.status === 'processing' || doc.status === 'queued'}
                     ><RefreshCw size={14}/></button>
-                    <button 
-                      className="btn btn-ghost action-btn danger" 
-                      title="Delete"
-                      onClick={() => onDelete(doc.id)}
-                    ><Trash2 size={14}/></button>
+                    {isAdmin && (
+                      <button 
+                        className="btn btn-ghost action-btn danger" 
+                        title="Delete"
+                        onClick={() => onDelete(doc.id)}
+                      ><Trash2 size={14}/></button>
+                    )}
                   </div>
                 </td>
               </tr>

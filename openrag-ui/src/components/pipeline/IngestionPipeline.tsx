@@ -5,9 +5,11 @@ import './IngestionPipeline.css';
 interface Props {
   uploadQueue?: File[];
   onComplete?: (fileName: string, success: boolean, reason?: string) => void;
+  headers?: Record<string, string>;
+  onAuthError?: () => void;
 }
 
-export function IngestionPipeline({ uploadQueue, onComplete }: Props) {
+export function IngestionPipeline({ uploadQueue, onComplete, headers, onAuthError }: Props) {
   const steps = ['Upload', 'Parse', 'Chunk', 'Embed', 'Index'];
   const [currentStep, setCurrentStep] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
@@ -38,9 +40,14 @@ export function IngestionPipeline({ uploadQueue, onComplete }: Props) {
 
     fetch('/api/v1/ingest/stream', {
       method: 'POST',
+      headers: headers,
       body: formData,
       signal: abortController.signal
     }).then(async (response) => {
+      if (response.status === 401 && onAuthError) {
+        onAuthError();
+        return;
+      }
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -102,7 +109,7 @@ export function IngestionPipeline({ uploadQueue, onComplete }: Props) {
     });
 
     return () => abortController.abort();
-  }, [currentFile]); // only trigger when currentFile changes
+  }, [currentFile]);
 
   return (
     <div className="pipeline-container flex-col gap-4">

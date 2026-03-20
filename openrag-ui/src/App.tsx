@@ -6,7 +6,9 @@ import { KnowledgeBase } from './components/kb/KnowledgeBase';
 import { IngestionPipeline } from './components/pipeline/IngestionPipeline';
 import { Observability } from './components/monitor/Observability';
 import { Settings } from './components/settings/Settings';
+import { Login } from './components/auth/Login';
 import './App.css';
+import './components/auth/Login.css';
 
 export interface DocumentRecord {
   id: string;
@@ -22,11 +24,45 @@ function App() {
   const [currentView, setCurrentView] = useState('query');
   const [uploadQueue, setUploadQueue] = useState<File[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem('openrag_token'));
+  const [user, setUser] = useState<{username: string, role: string} | null>(() => {
+    const saved = localStorage.getItem('openrag_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('openrag_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
+  const logout = () => {
+    localStorage.removeItem('openrag_token');
+    localStorage.removeItem('openrag_user');
+    setIsAuthenticated(false);
+    setUser(null);
+  };
+
+  const handleLogin = (token: string, username: string, role: string) => {
+    localStorage.setItem('openrag_token', token);
+    localStorage.setItem('openrag_user', JSON.stringify({ username, role }));
+    setIsAuthenticated(true);
+    setUser({ username, role });
+    setCurrentView('query');
+  };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     const fetchDocs = async () => {
       try {
-        const res = await fetch('/api/v1/documents');
+        const res = await fetch('/api/v1/documents', {
+          headers: getAuthHeaders() as HeadersInit
+        });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         
@@ -46,7 +82,7 @@ function App() {
       }
     };
     fetchDocs();
-  }, []);
+  }, [isAuthenticated]);
 
   const handleUpload = (files: File[]) => {
     setUploadQueue(files);
@@ -80,13 +116,25 @@ function App() {
   };
 
   const handleDelete = async (id: string) => {
-    try { await fetch(`/api/v1/documents/${id}`, { method: 'DELETE' }); } catch(e) {}
+    try { 
+      const res = await fetch(`/api/v1/documents/${id}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      }); 
+      if (res.status === 401) logout();
+    } catch(e) {}
     setDocuments(prev => prev.filter(doc => doc.id !== id));
   };
 
   const handleDeleteMultiple = async (ids: string[]) => {
     for (const id of ids) {
-      try { await fetch(`/api/v1/documents/${id}`, { method: 'DELETE' }); } catch(e) {}
+      try { 
+        const res = await fetch(`/api/v1/documents/${id}`, { 
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        }); 
+        if (res.status === 401) logout();
+      } catch(e) {}
     }
     setDocuments(prev => prev.filter(doc => !ids.includes(doc.id)));
   };
@@ -94,7 +142,13 @@ function App() {
   const handleClearAll = async () => {
     if (window.confirm("Are you sure you want to completely empty the knowledge base? This action cannot be undone.")) {
       for (const doc of documents) {
-        try { await fetch(`/api/v1/documents/${doc.id}`, { method: 'DELETE' }); } catch(e) {}
+        try { 
+          const res = await fetch(`/api/v1/documents/${doc.id}`, { 
+            method: 'DELETE',
+            headers: getAuthHeaders()
+          }); 
+          if (res.status === 401) logout();
+        } catch(e) {}
       }
       setDocuments([]);
     }
@@ -110,33 +164,42 @@ function App() {
     }
   };
 
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app-layout">
-      <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+      <Sidebar currentView={currentView} setCurrentView={setCurrentView} role={user?.role || 'viewer'} />
       
       <div className="main-content">
         <TopNav title={getTitle()} />
         <div className="content-area relative h-full">
           <div style={{ display: currentView === 'query' ? 'block' : 'none', height: '100%' }}>
-            <QueryStudio />
+            <QueryStudio headers={getAuthHeaders()} onAuthError={logout} />
           </div>
-          <div style={{ display: currentView === 'knowledge' ? 'block' : 'none', height: '100%' }}>
-            <KnowledgeBase 
-              documents={documents} 
-              onUpload={handleUpload} 
-              onDelete={handleDelete}
-              onDeleteMultiple={handleDeleteMultiple}
-              onClearAll={handleClearAll}
-            />
-          </div>
-          <div style={{ display: currentView === 'ingestion' ? 'block' : 'none', height: '100%' }}>
-            <IngestionPipeline uploadQueue={uploadQueue} onComplete={handleIngestionComplete} />
-          </div>
-          <div style={{ display: currentView === 'observability' ? 'block' : 'none', height: '100%' }}>
-            <Observability />
-          </div>
+          {user?.role === 'admin' && (
+            <>
+              <div style={{ display: currentView === 'knowledge' ? 'block' : 'none', height: '100%' }}>
+                <KnowledgeBase 
+                  documents={documents} 
+                  onUpload={handleUpload} 
+                  onDelete={handleDelete}
+                  onDeleteMultiple={handleDeleteMultiple}
+                  onClearAll={handleClearAll}
+                  role={user?.role || 'viewer'}
+                />
+              </div>
+              <div style={{ display: currentView === 'ingestion' ? 'block' : 'none', height: '100%' }}>
+                <IngestionPipeline uploadQueue={uploadQueue} onComplete={handleIngestionComplete} headers={getAuthHeaders()} />
+              </div>
+              <div style={{ display: currentView === 'observability' ? 'block' : 'none', height: '100%' }}>
+                <Observability headers={getAuthHeaders()} onAuthError={logout} />
+              </div>
+            </>
+          )}
           <div style={{ display: currentView === 'settings' ? 'block' : 'none', height: '100%' }}>
-            <Settings />
+            <Settings onLogout={logout} user={user} />
           </div>
         </div>
       </div>

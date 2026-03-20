@@ -93,7 +93,12 @@ function MessageContent({ content, role }: { content: string, role: string }) {
   );
 }
 
-export function QueryStudio() {
+interface QueryStudioProps {
+  headers?: Record<string, string>;
+  onAuthError?: () => void;
+}
+
+export function QueryStudio({ headers, onAuthError }: QueryStudioProps) {
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem('openrag_chat_history');
     if (saved) {
@@ -136,9 +141,17 @@ export function QueryStudio() {
     try {
       const response = await fetch('/api/v1/query/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...headers
+        },
         body: JSON.stringify({ text: input, namespace: 'default', top_k: 5 }),
       });
+
+      if (response.status === 401 && onAuthError) {
+        onAuthError();
+        return;
+      }
 
       if (!response.body) throw new Error('No body in response');
       const reader = response.body.getReader();

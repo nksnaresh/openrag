@@ -3,14 +3,18 @@ import { MessageSquare, LayoutDashboard, Database, Activity, Settings, HelpCircl
 interface SidebarProps {
   currentView: string;
   setCurrentView: (view: string) => void;
+  role: string;
 }
 
-export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
+export function Sidebar({ currentView, setCurrentView, role }: SidebarProps) {
+  const isAdmin = role === 'admin';
   const navItems = [
     { id: 'query', label: 'Query Studio', icon: MessageSquare },
-    { id: 'knowledge', label: 'Knowledge Base', icon: Database },
-    { id: 'ingestion', label: 'Ingestion Pipeline', icon: LayoutDashboard },
-    { id: 'observability', label: 'Observability', icon: Activity },
+    ...(isAdmin ? [
+      { id: 'knowledge', label: 'Knowledge Base', icon: Database },
+      { id: 'ingestion', label: 'Ingestion Pipeline', icon: LayoutDashboard },
+      { id: 'observability', label: 'Observability', icon: Activity },
+    ] : [])
   ];
 
   return (
